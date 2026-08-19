@@ -4,6 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of a nutrition facts label to fill calories and macros.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo of a nutrition facts label to fill calories and macros.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

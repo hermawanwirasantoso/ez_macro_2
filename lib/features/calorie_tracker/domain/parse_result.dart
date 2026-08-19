@@ -6,6 +6,10 @@ class ParseResult {
     this.proteinG = 0,
     this.carbsG = 0,
     this.fatG = 0,
+    this.saturatedFatG = 0,
+    this.fiberG = 0,
+    this.addedSugarG = 0,
+    this.sodiumMg = 0,
   });
 
   final String mealLabel;
@@ -14,6 +18,10 @@ class ParseResult {
   final int proteinG;
   final int carbsG;
   final int fatG;
+  final int saturatedFatG;
+  final int fiberG;
+  final int addedSugarG;
+  final int sodiumMg;
 
   double uncertaintyPercent({required bool isFallback}) {
     if (isFallback) {
@@ -40,6 +48,10 @@ class ParseResult {
     required int proteinG,
     required int carbsG,
     required int fatG,
+    int? saturatedFatG,
+    int? fiberG,
+    int? addedSugarG,
+    int? sodiumMg,
   }) {
     return ParseResult(
       mealLabel: mealLabel,
@@ -48,6 +60,10 @@ class ParseResult {
       proteinG: proteinG,
       carbsG: carbsG,
       fatG: fatG,
+      saturatedFatG: saturatedFatG ?? this.saturatedFatG,
+      fiberG: fiberG ?? this.fiberG,
+      addedSugarG: addedSugarG ?? this.addedSugarG,
+      sodiumMg: sodiumMg ?? this.sodiumMg,
     );
   }
 }

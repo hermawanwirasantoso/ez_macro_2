@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
 import 'features/calorie_tracker/data/api_key_storage.dart';
+import 'features/calorie_tracker/data/calorie_storage.dart';
 import 'features/calorie_tracker/data/google_ai_calorie_parser.dart';
+import 'features/calorie_tracker/data/nutrition_label_image_source.dart';
 import 'features/calorie_tracker/domain/calorie_parser.dart';
+import 'features/calorie_tracker/domain/nutrition_label_image.dart';
 import 'features/calorie_tracker/domain/parse_result.dart';
+import 'features/calorie_tracker/domain/saved_food.dart';
 import 'features/calorie_tracker/domain/tracker_state.dart';
 import 'features/calorie_tracker/presentation/theme/app_theme.dart';
 import 'features/calorie_tracker/presentation/widgets/ai_logger_card.dart';
 import 'features/calorie_tracker/presentation/widgets/api_key_modal.dart';
+import 'features/calorie_tracker/presentation/widgets/date_navigation_bar.dart';
+import 'features/calorie_tracker/presentation/widgets/detailed_nutrition_modal.dart';
+import 'features/calorie_tracker/presentation/widgets/food_entry_modal.dart';
 import 'features/calorie_tracker/presentation/widgets/hero_calorie_card.dart';
+import 'features/calorie_tracker/presentation/widgets/meal_category_tabs.dart';
 import 'features/calorie_tracker/presentation/widgets/recent_entries_section.dart';
 import 'features/calorie_tracker/presentation/widgets/target_editor_modal.dart';
 
@@ -33,9 +41,14 @@ class MacroTrackerApp extends StatefulWidget {
   const MacroTrackerApp({
     super.key,
     ApiKeyStorage? apiKeyStorage,
-  }) : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage();
+    CalorieStorage? calorieStorage,
+    this.nutritionLabelImageSource,
+  })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
+        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage();
 
   final ApiKeyStorage apiKeyStorage;
+  final CalorieStorage calorieStorage;
+  final NutritionLabelImageSource? nutritionLabelImageSource;
 
   @override
   State<MacroTrackerApp> createState() => _MacroTrackerAppState();
@@ -44,10 +57,35 @@ class MacroTrackerApp extends StatefulWidget {
 class _MacroTrackerAppState extends State<MacroTrackerApp> {
   bool _isDarkMode = true;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialSettings();
+  }
+
+  Future<void> _loadInitialSettings() async {
+    try {
+      final UserSettings settings = await widget.calorieStorage.loadSettings();
+      if (mounted && settings.isDarkMode != _isDarkMode) {
+        setState(() {
+          _isDarkMode = settings.isDarkMode;
+        });
+      }
+    } catch (_) {
+      // Retain default dark mode
+    }
+  }
+
   void _toggleThemeMode() {
+    final bool newMode = !_isDarkMode;
     setState(() {
-      _isDarkMode = !_isDarkMode;
+      _isDarkMode = newMode;
     });
+
+    // Save theme preference asynchronously
+    widget.calorieStorage.loadSettings().then((UserSettings current) {
+      widget.calorieStorage.saveSettings(current.copyWith(isDarkMode: newMode));
+    }).catchError((_) {});
   }
 
   @override
@@ -60,6 +98,8 @@ class _MacroTrackerAppState extends State<MacroTrackerApp> {
         onToggleTheme: _toggleThemeMode,
         isDarkMode: _isDarkMode,
         apiKeyStorage: widget.apiKeyStorage,
+        calorieStorage: widget.calorieStorage,
+        nutritionLabelImageSource: widget.nutritionLabelImageSource,
       ),
     );
   }
@@ -71,18 +111,23 @@ class CalorieHomePage extends StatefulWidget {
     required this.onToggleTheme,
     required this.isDarkMode,
     ApiKeyStorage? apiKeyStorage,
-  }) : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage();
+    CalorieStorage? calorieStorage,
+    this.nutritionLabelImageSource,
+  })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
+        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage();
 
   final VoidCallback onToggleTheme;
   final bool isDarkMode;
   final ApiKeyStorage apiKeyStorage;
+  final CalorieStorage calorieStorage;
+  final NutritionLabelImageSource? nutritionLabelImageSource;
 
   @override
   State<CalorieHomePage> createState() => _CalorieHomePageState();
 }
 
 class _CalorieHomePageState extends State<CalorieHomePage> {
-  final CalorieTrackerState _trackerState = CalorieTrackerState();
+  late final CalorieTrackerState _trackerState;
   String? _userApiKey;
   late CalorieParser _calorieParser = _buildParser();
   final CalorieParser _fallbackParser = const RegexCalorieParser();
@@ -91,11 +136,66 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   bool _lastUsedFallback = false;
   bool _showSpreadDetails = false;
   ParseResult? _lastParse;
+  List<SavedFood> _savedFoods = <SavedFood>[];
 
   @override
   void initState() {
     super.initState();
+    _trackerState = CalorieTrackerState(storage: widget.calorieStorage);
     _loadSavedApiKey();
+    _initTrackerData();
+    _loadSavedFoods();
+  }
+
+  Future<void> _initTrackerData() async {
+    await _trackerState.initFromStorage(storage: widget.calorieStorage);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadSavedFoods() async {
+    try {
+      final List<SavedFood> savedFoods =
+          await widget.calorieStorage.loadSavedFoods();
+      if (mounted) {
+        setState(() {
+          _savedFoods = savedFoods;
+        });
+      }
+    } catch (_) {
+      // Keep an empty in-memory catalog if storage is unavailable.
+    }
+  }
+
+  Future<void> _saveFoodForFutureUse(SavedFood food) async {
+    final int existingIndex = _savedFoods.indexWhere(
+      (SavedFood item) => item.name.toLowerCase() == food.name.toLowerCase(),
+    );
+    final SavedFood foodToSave = existingIndex == -1
+        ? food
+        : food.copyWith(
+            id: _savedFoods[existingIndex].id,
+            updatedAt: DateTime.now(),
+          );
+
+    await widget.calorieStorage.saveSavedFood(foodToSave);
+    final List<SavedFood> savedFoods =
+        await widget.calorieStorage.loadSavedFoods();
+    if (mounted) {
+      setState(() {
+        _savedFoods = savedFoods;
+      });
+    }
+  }
+
+  Future<void> _deleteSavedFood(SavedFood food) async {
+    await widget.calorieStorage.deleteSavedFood(food.id);
+    if (mounted) {
+      setState(() {
+        _savedFoods.removeWhere((SavedFood item) => item.id == food.id);
+      });
+    }
   }
 
   Future<void> _loadSavedApiKey() async {
@@ -120,9 +220,14 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     int proteinG = 0,
     int carbsG = 0,
     int fatG = 0,
+    int saturatedFatG = 0,
+    int fiberG = 0,
+    int addedSugarG = 0,
+    int sodiumMg = 0,
     String? rangeText,
     String? sourceLabel,
     double? spreadPercent,
+    MealType? mealType,
   }) {
     setState(() {
       _trackerState.addCalories(
@@ -131,9 +236,14 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         proteinG: proteinG,
         carbsG: carbsG,
         fatG: fatG,
+        saturatedFatG: saturatedFatG,
+        fiberG: fiberG,
+        addedSugarG: addedSugarG,
+        sodiumMg: sodiumMg,
         rangeText: rangeText,
         sourceLabel: sourceLabel,
         spreadPercent: spreadPercent,
+        mealType: mealType,
       );
     });
   }
@@ -145,6 +255,104 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Entry removed. Totals updated.')),
     );
+  }
+
+  Future<void> _editEntry(int index) async {
+    if (index < 0 || index >= _trackerState.filteredEntries.length) return;
+    final FoodLogEntry target = _trackerState.filteredEntries[index];
+
+    final dynamic result = await FoodEntryModal.showEdit(context, target);
+    if (result == null || !mounted) return;
+
+    if (result == 'delete') {
+      setState(() {
+        _trackerState.removeEntryById(target.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Entry deleted.')),
+      );
+    } else if (result is FoodLogEntry) {
+      final int originalIndex = _trackerState.entries.indexWhere((FoodLogEntry e) => e.id == target.id);
+      if (originalIndex != -1) {
+        setState(() {
+          _trackerState.editEntry(originalIndex, result);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entry updated.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openQuickAddModal() async {
+    final FoodLogEntry? result = await FoodEntryModal.showAdd(
+      context,
+      defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+      savedFoods: _savedFoods,
+      onSaveFood: _saveFoodForFutureUse,
+      onDeleteSavedFood: _deleteSavedFood,
+      nutritionLabelImageSource: widget.nutritionLabelImageSource,
+      hasConfiguredApiKey: _hasConfiguredApiKey,
+      onParseNutritionLabel: (
+        NutritionLabelImage image, {
+        String? hint,
+      }) {
+        return _calorieParser.parseNutritionLabel(image, hint: hint);
+      },
+    );
+
+    if (result != null && mounted) {
+      _addCalories(
+        result.calories,
+        result.mealLabel,
+        proteinG: result.proteinG,
+        carbsG: result.carbsG,
+        fatG: result.fatG,
+        saturatedFatG: result.saturatedFatG,
+        fiberG: result.fiberG,
+        addedSugarG: result.addedSugarG,
+        sodiumMg: result.sodiumMg,
+        sourceLabel: result.sourceLabel ?? 'Manual',
+        mealType: result.mealType,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logged ${result.mealLabel} (${result.calories} kcal).')),
+      );
+    }
+  }
+
+  Future<void> _confirmClearDay() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Clear Day Logs?'),
+          content: Text(
+            'Are you sure you want to remove all food entries for ${_trackerState.formattedDate}?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.fat),
+              child: const Text('Clear All'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() {
+        _trackerState.clearCurrentDay();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Day log cleared.')),
+      );
+    }
   }
 
   CalorieParser _buildParser() {
@@ -257,11 +465,20 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       proteinG: result.proteinG,
       carbsG: result.carbsG,
       fatG: result.fatG,
+      saturatedFatG: result.saturatedFatG,
+      fiberG: result.fiberG,
+      addedSugarG: result.addedSugarG,
+      sodiumMg: result.sodiumMg,
       rangeText: '$low-$high kcal',
       sourceLabel: sourceLabel,
       spreadPercent: uncertainty,
+      mealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
     );
     _nlInputController.clear();
+  }
+
+  void _openDetailedNutrition() {
+    DetailedNutritionModal.show(context, trackerState: _trackerState);
   }
 
   Future<void> _openTargetEditor() async {
@@ -386,112 +603,48 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         ),
         child: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             children: <Widget>[
-              // Top Banner Row: "Today's Calories" Title + Streak Banner + Percentage Ring
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text(
-                          "Today's Calories",
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.6,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: AppColors.streak.withValues(alpha: 0.12),
-                            border: Border.all(
-                              color: AppColors.streak.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Icon(Icons.local_fire_department, color: AppColors.streak, size: 16),
-                              SizedBox(width: 6),
-                              Text(
-                                'Streak 5 days',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.streak,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Animated Circular Indicator
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.06)
-                          : Colors.white,
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: isDark
-                              ? Colors.black.withValues(alpha: 0.2)
-                              : Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: TweenAnimationBuilder<double>(
-                      tween: Tween<double>(
-                        begin: 0,
-                        end: progress,
-                      ),
-                      duration: const Duration(milliseconds: 700),
-                      builder: (BuildContext context, double value, Widget? child) {
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: <Widget>[
-                            SizedBox(
-                              width: 54,
-                              height: 54,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 5.5,
-                                strokeCap: StrokeCap.round,
-                                value: value,
-                                backgroundColor: isDark
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : AppColors.primary.withValues(alpha: 0.12),
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            Text(
-                              '${(value * 100).round()}%',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
+              // Top Date Navigator & Streak Row
+              DateNavigationBar(
+                trackerState: _trackerState,
+                progress: progress,
+                onPreviousDay: () {
+                  setState(() {
+                    _trackerState.selectedDate =
+                        _trackerState.selectedDate.subtract(const Duration(days: 1));
+                  });
+                  _trackerState.loadForDate(_trackerState.selectedDate).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
+                onNextDay: () {
+                  setState(() {
+                    _trackerState.selectedDate =
+                        _trackerState.selectedDate.add(const Duration(days: 1));
+                  });
+                  _trackerState.loadForDate(_trackerState.selectedDate).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
+                onSelectDate: (DateTime date) {
+                  setState(() {
+                    _trackerState.selectedDate = date;
+                  });
+                  _trackerState.loadForDate(date).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
+                onJumpToToday: () {
+                  setState(() {
+                    _trackerState.selectedDate = DateTime.now();
+                  });
+                  _trackerState.loadForDate(_trackerState.selectedDate).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
 
               // Hero Calorie and Macro Card
               HeroCalorieCard(
@@ -503,9 +656,10 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                   });
                 },
                 onOpenTargetEditor: _openTargetEditor,
+                onOpenDetailedNutrition: _openDetailedNutrition,
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
 
               // AI Natural Language Input Card
               AiLoggerCard(
@@ -518,17 +672,35 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                 onParse: _parseAndLogMeal,
                 onSelectSuggestion: _onSelectSuggestion,
                 onConfigureApiKey: _openApiKeyModal,
+                onQuickAdd: _openQuickAddModal,
+                selectedMealType: _trackerState.selectedMealFilter,
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
+
+              // Meal Category Tabs Filter
+              MealCategoryTabs(
+                trackerState: _trackerState,
+                selectedFilter: _trackerState.selectedMealFilter,
+                onSelectFilter: (MealType? type) {
+                  setState(() {
+                    _trackerState.setMealFilter(type);
+                  });
+                },
+              ),
+
+              const SizedBox(height: 10),
 
               // Recent Entries List Section
               RecentEntriesSection(
-                entries: _trackerState.entries,
+                entries: _trackerState.filteredEntries,
+                selectedMealFilter: _trackerState.selectedMealFilter,
                 onRemoveEntry: _removeEntry,
+                onEditEntry: _editEntry,
+                onClearAll: _confirmClearDay,
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
             ],
           ),
         ),

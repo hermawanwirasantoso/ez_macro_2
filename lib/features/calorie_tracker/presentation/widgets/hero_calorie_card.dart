@@ -10,12 +10,14 @@ class HeroCalorieCard extends StatelessWidget {
     required this.showSpreadDetails,
     required this.onToggleSpread,
     required this.onOpenTargetEditor,
+    this.onOpenDetailedNutrition,
   });
 
   final CalorieTrackerState trackerState;
   final bool showSpreadDetails;
   final ValueChanged<bool> onToggleSpread;
   final VoidCallback onOpenTargetEditor;
+  final VoidCallback? onOpenDetailedNutrition;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +69,7 @@ class HeroCalorieCard extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -89,7 +91,7 @@ class HeroCalorieCard extends StatelessWidget {
                           color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Row(
                         children: <Widget>[
                           Container(
@@ -144,7 +146,7 @@ class HeroCalorieCard extends StatelessWidget {
             ),
 
             if (showSpreadDetails && trackerState.spreadSamples > 0) ...<Widget>[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -165,11 +167,11 @@ class HeroCalorieCard extends StatelessWidget {
               ),
             ],
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
 
             // Uncertainty Spread Switch Row
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.04)
@@ -213,7 +215,7 @@ class HeroCalorieCard extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // Main Calorie Progress Bar
             Column(
@@ -304,14 +306,47 @@ class HeroCalorieCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  'Goal Balance',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                if (onOpenDetailedNutrition != null)
+                  InkWell(
+                    key: const Key('detailedNutritionButton'),
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: onOpenDetailedNutrition,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(
+                            Icons.analytics_outlined,
+                            size: 14,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Detailed Nutrition',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? AppColors.primaryLight : AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  Text(
+                    'Goal Balance',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 10),

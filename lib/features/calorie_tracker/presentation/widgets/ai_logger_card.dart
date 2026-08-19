@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../domain/meal_type.dart';
 import '../../domain/parse_result.dart';
 import '../theme/app_theme.dart';
 
@@ -14,6 +15,9 @@ class AiLoggerCard extends StatelessWidget {
     required this.onParse,
     required this.onSelectSuggestion,
     this.onConfigureApiKey,
+    this.onQuickAdd,
+    this.selectedMealType,
+    this.onSelectMealType,
   });
 
   final TextEditingController inputController;
@@ -25,6 +29,9 @@ class AiLoggerCard extends StatelessWidget {
   final VoidCallback onParse;
   final ValueChanged<String> onSelectSuggestion;
   final VoidCallback? onConfigureApiKey;
+  final VoidCallback? onQuickAdd;
+  final MealType? selectedMealType;
+  final ValueChanged<MealType>? onSelectMealType;
 
   static const List<String> _suggestions = <String>[
     'a bowl of rice',
@@ -56,7 +63,7 @@ class AiLoggerCard extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -64,7 +71,7 @@ class AiLoggerCard extends StatelessWidget {
           Row(
             children: <Widget>[
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
@@ -73,11 +80,11 @@ class AiLoggerCard extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.auto_awesome,
-                  size: 18,
+                  size: 16,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,25 +92,38 @@ class AiLoggerCard extends StatelessWidget {
                     Text(
                       'Log With AI',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.3,
                         color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
                       hasConfiguredApiKey
-                          ? 'AI key detected. If AI fails, local estimate is used.'
-                          : 'No AI key detected. Running local estimate only.',
+                          ? 'AI key active. Local estimate on fallback.'
+                          : 'Running local estimate. Tap to add key.',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
+              if (onQuickAdd != null) ...<Widget>[
+                InkWell(
+                  key: const Key('openQuickAddButton'),
+                  onTap: onQuickAdd,
+                  borderRadius: BorderRadius.circular(16),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.add_circle_outline, color: AppColors.primary, size: 20),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
               Material(
                 color: Colors.transparent,
                 child: InkWell(
@@ -115,39 +135,31 @@ class AiLoggerCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: hasConfiguredApiKey
                           ? AppColors.success.withValues(alpha: 0.12)
-                          : AppColors.primary.withValues(alpha: 0.12),
+                          : AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: hasConfiguredApiKey
                             ? AppColors.success.withValues(alpha: 0.3)
-                            : AppColors.primary.withValues(alpha: 0.3),
+                            : AppColors.primary.withValues(alpha: 0.25),
                       ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: hasConfiguredApiKey ? AppColors.success : AppColors.primary,
-                          ),
+                        Icon(
+                          hasConfiguredApiKey ? Icons.check_circle_outline : Icons.settings_outlined,
+                          size: 13,
+                          color: hasConfiguredApiKey ? AppColors.success : AppColors.primaryLight,
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4),
                         Text(
                           hasConfiguredApiKey ? 'AI Ready' : 'Local NLP',
+                          key: const Key('configureApiKeyBadge'),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: hasConfiguredApiKey ? AppColors.success : AppColors.primary,
+                            color: hasConfiguredApiKey ? AppColors.success : AppColors.primaryLight,
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.settings_outlined,
-                          size: 13,
-                          color: hasConfiguredApiKey ? AppColors.success : AppColors.primary,
                         ),
                       ],
                     ),
@@ -157,45 +169,38 @@ class AiLoggerCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
 
-          // Suggestion Chips
-          SizedBox(
-            height: 34,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _suggestions.length,
-              separatorBuilder: (BuildContext context, int index) => const SizedBox(width: 8),
-              itemBuilder: (BuildContext context, int index) {
-                final String suggestion = _suggestions[index];
-                return ActionChip(
-                  label: Text(
-                    suggestion,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+          // Suggestion Chips Row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List<Widget>.generate(
+                _suggestions.length,
+                (int index) {
+                  final String suggestion = _suggestions[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ActionChip(
+                      key: Key('suggestionChip_$index'),
+                      label: Text(
+                        suggestion,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      onPressed: () => onSelectSuggestion(suggestion),
                     ),
-                  ),
-                  backgroundColor: isDark
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : Colors.black.withValues(alpha: 0.04),
-                  side: BorderSide(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.1)
-                        : Colors.black.withValues(alpha: 0.06),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  onPressed: () => onSelectSuggestion(suggestion),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Input field and Parse Button
           Row(

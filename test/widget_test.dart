@@ -19,6 +19,13 @@ Future<void> _scrollToInput(WidgetTester tester) async {
   );
 }
 
+Future<void> _tapSaveEntry(WidgetTester tester) async {
+  final Finder saveButton = find.byKey(const Key('saveEntryButton'));
+  await tester.ensureVisible(saveButton);
+  await tester.tap(saveButton);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Calorie tracker summary renders initial values', (WidgetTester tester) async {
     await tester.pumpWidget(const MacroTrackerApp());
@@ -158,6 +165,12 @@ void main() {
     await tester.tap(find.byKey(const Key('removeEntryButton_0')));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('caloriesConsumedText')),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     expect(find.text('0 / 2200 kcal'), findsOneWidget);
     expect(find.text('Protein  0/160 g'), findsOneWidget);
     expect(find.text('Carbs  0/255 g'), findsOneWidget);
@@ -266,5 +279,173 @@ void main() {
 
     expect(find.text("Today's Calories"), findsOneWidget);
     expect(find.byKey(const Key('openApiKeyModalButton')), findsOneWidget);
+  });
+
+  testWidgets('Quick Add shows a nutrition label scan action', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    await _scrollToInput(tester);
+    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('scanNutritionLabelButton')), findsOneWidget);
+    expect(find.text('Scan nutrition label'), findsOneWidget);
+  });
+
+  testWidgets('User can manually log food via Quick Add modal', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    await _scrollToInput(tester);
+    final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    expect(quickAddButton, findsOneWidget);
+
+    await tester.tap(quickAddButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Quick Add Food'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Protein Shake');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '250');
+    await tester.enterText(find.byKey(const Key('proteinField')), '30');
+    await tester.enterText(find.byKey(const Key('carbsField')), '10');
+    await tester.enterText(find.byKey(const Key('fatField')), '3');
+
+    await _tapSaveEntry(tester);
+
+    expect(find.text('250 / 2200 kcal'), findsOneWidget);
+    expect(find.text('Protein  30/160 g'), findsOneWidget);
+    expect(find.text('Carbs  10/255 g'), findsOneWidget);
+    expect(find.text('Fat  3/60 g'), findsOneWidget);
+    expect(find.text('Protein Shake - 250 kcal Manual'), findsOneWidget);
+  });
+
+  testWidgets('User can edit an existing food entry and update values', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    // Quick add first item
+    await _scrollToInput(tester);
+    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Apple');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '80');
+    await _tapSaveEntry(tester);
+
+    expect(find.text('80 / 2200 kcal'), findsOneWidget);
+
+    // Edit the entry
+    final Finder editButton = find.byKey(const Key('editEntryButton_0'));
+    expect(editButton, findsOneWidget);
+
+    await tester.tap(editButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit Meal'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Large Honeycrisp Apple');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '120');
+    await _tapSaveEntry(tester);
+
+    expect(find.text('120 / 2200 kcal'), findsOneWidget);
+    expect(find.text('Large Honeycrisp Apple - 120 kcal Manual'), findsOneWidget);
+  });
+
+  testWidgets('User can filter entries by meal category tabs', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    // Add breakfast item
+    await _scrollToInput(tester);
+    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mealTypeChip_breakfast')));
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Oatmeal');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '300');
+    await _tapSaveEntry(tester);
+
+    // Add lunch item
+    await _scrollToInput(tester);
+    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mealTypeChip_lunch')));
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Chicken Bowl');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '500');
+    await _tapSaveEntry(tester);
+
+    expect(find.text('800 / 2200 kcal'), findsOneWidget);
+
+    // Filter to Lunch only
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('mealFilter_lunch')),
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('mealFilter_lunch')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chicken Bowl - 500 kcal Manual'), findsOneWidget);
+    expect(find.text('Oatmeal - 300 kcal Manual'), findsNothing);
+
+    // Filter back to All
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('mealFilter_all')),
+      -50,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('mealFilter_all')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chicken Bowl - 500 kcal Manual'), findsOneWidget);
+    expect(find.text('Oatmeal - 300 kcal Manual'), findsOneWidget);
+  });
+
+  testWidgets('User can navigate calendar dates and jump back to today', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text("Today's Calories"), findsOneWidget);
+
+    // Navigate to yesterday
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('jumpToTodayButton')), findsOneWidget);
+
+    // Jump back to today
+    await tester.tap(find.byKey(const Key('jumpToTodayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Today's Calories"), findsOneWidget);
+  });
+
+  testWidgets('User can clear day logs with confirmation dialog', (WidgetTester tester) async {
+    await tester.pumpWidget(const MacroTrackerApp());
+    await tester.pumpAndSettle();
+
+    // Add an entry
+    await _scrollToInput(tester);
+    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Snack Bar');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '150');
+    await _tapSaveEntry(tester);
+
+    expect(find.text('150 / 2200 kcal'), findsOneWidget);
+
+    // Tap clear day button
+    final Finder clearButton = find.byKey(const Key('clearAllEntriesButton'));
+    expect(clearButton, findsOneWidget);
+
+    await tester.tap(clearButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Clear Day Logs?'), findsOneWidget);
+
+    // Confirm clear
+    await tester.tap(find.widgetWithText(FilledButton, 'Clear All'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0 / 2200 kcal'), findsOneWidget);
   });
 }

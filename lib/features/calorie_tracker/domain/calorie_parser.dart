@@ -1,13 +1,30 @@
+import 'nutrition_label_image.dart';
 import 'parse_result.dart';
 
 abstract class CalorieParser {
   const CalorieParser();
 
   Future<ParseResult?> parse(String input);
+
+  /// Reads a nutrition facts photo. Text-only parsers return null.
+  Future<ParseResult?> parseNutritionLabel(
+    NutritionLabelImage image, {
+    String? hint,
+  }) async {
+    return null;
+  }
 }
 
 class RegexCalorieParser implements CalorieParser {
   const RegexCalorieParser();
+
+  @override
+  Future<ParseResult?> parseNutritionLabel(
+    NutritionLabelImage image, {
+    String? hint,
+  }) async {
+    return null;
+  }
 
   @override
   Future<ParseResult?> parse(String input) async {
@@ -38,6 +55,11 @@ class RegexCalorieParser implements CalorieParser {
     final int? extractedProtein = _extractMacro(trimmedInput, 'p|protein');
     final int? extractedCarbs = _extractMacro(trimmedInput, 'c|carb|carbs');
     final int? extractedFat = _extractMacro(trimmedInput, 'f|fat');
+    final int? extractedSatFat = _extractMacro(trimmedInput, 'sat\\s*fat|saturated\\s*fat');
+    final int? extractedFiber = _extractMacro(trimmedInput, 'fiber|dietary\\s*fiber');
+    final int? extractedAddedSugar = _extractMacro(trimmedInput, 'added\\s*sugar|sugar|sugars');
+    final int? extractedSodium = _extractSodium(trimmedInput);
+
     final ({int protein, int carbs, int fat}) estimated =
         _estimateMacrosForCalories(safeCalories);
     final int protein =
@@ -52,6 +74,19 @@ class RegexCalorieParser implements CalorieParser {
         (extractedFat ?? phraseEstimate?.fat ?? estimated.fat)
             .clamp(0, 300)
             .toInt();
+    final int saturatedFat = (extractedSatFat ?? (fat * 0.35).round())
+        .clamp(0, 200)
+        .toInt();
+    final int fiber = (extractedFiber ?? (carbs * 0.1).round())
+        .clamp(0, 200)
+        .toInt();
+    final int addedSugar = (extractedAddedSugar ?? (carbs * 0.15).round())
+        .clamp(0, 500)
+        .toInt();
+    final int sodium = (extractedSodium ?? (safeCalories * 1.2).round())
+        .clamp(0, 20000)
+        .toInt();
+
     final double confidence = calorieMatch != null
         ? 0.88
         : (phraseEstimate?.confidence ?? 0.72).clamp(0.0, 1.0).toDouble();
@@ -63,6 +98,10 @@ class RegexCalorieParser implements CalorieParser {
       proteinG: protein,
       carbsG: carbs,
       fatG: fat,
+      saturatedFatG: saturatedFat,
+      fiberG: fiber,
+      addedSugarG: addedSugar,
+      sodiumMg: sodium,
     );
   }
 
@@ -282,7 +321,7 @@ class RegexCalorieParser implements CalorieParser {
 
   int? _extractMacro(String input, String macroPattern) {
     final RegExp exp = RegExp(
-      '(\\d{1,3})\\s*(g|gram|grams)?\\s*($macroPattern)\\b|($macroPattern)\\s*(\\d{1,3})\\s*(g|gram|grams)?',
+      '(\\d{1,3})\\s*(g|gram|grams)?\\s*\\b($macroPattern)\\b|\\b($macroPattern)\\b\\s*(\\d{1,3})\\s*(g|gram|grams)?',
       caseSensitive: false,
     );
     final RegExpMatch? match = exp.firstMatch(input);
@@ -294,6 +333,23 @@ class RegexCalorieParser implements CalorieParser {
     final String? secondNumber = match.group(5);
     final int? value = int.tryParse(firstNumber ?? secondNumber ?? '');
     return value?.clamp(0, 400).toInt();
+  }
+
+  int? _extractSodium(String input) {
+    final RegExp expMg = RegExp(
+      r'(\d{1,5})\s*(mg|milligram|milligrams)?\s*(sodium|salt)\b|\b(sodium|salt)\s*(\d{1,5})\s*(mg|milligram|milligrams)?',
+      caseSensitive: false,
+    );
+    final RegExpMatch? match = expMg.firstMatch(input);
+    if (match != null) {
+      final String? firstNumber = match.group(1);
+      final String? secondNumber = match.group(5);
+      final int? value = int.tryParse(firstNumber ?? secondNumber ?? '');
+      if (value != null) {
+        return value.clamp(0, 20000).toInt();
+      }
+    }
+    return null;
   }
 
   ({int protein, int carbs, int fat}) _estimateMacrosForCalories(int calories) {

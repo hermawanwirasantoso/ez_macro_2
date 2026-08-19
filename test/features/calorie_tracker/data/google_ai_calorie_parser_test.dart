@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ez_macro_2/features/calorie_tracker/data/google_ai_calorie_parser.dart';
+import 'package:ez_macro_2/features/calorie_tracker/domain/nutrition_label_image.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -155,6 +156,95 @@ void main() {
       expect(result, isNull);
     });
 
+    test('parses a nutrition facts photo through the same generateContent call', () async {
+      Map<String, dynamic>? requestBody;
+
+      final mockClient = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(request.url.path, contains(':generateContent'));
+
+        final responsePayload = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'mealLabel': 'Greek Yogurt (170g)',
+                      'calories': 100,
+                      'proteinG': 17,
+                      'carbsG': 6,
+                      'fatG': 0,
+                      'confidence': 0.97,
+                    }),
+                  },
+                ],
+                'role': 'model',
+              },
+            },
+          ],
+        };
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3, 4],
+          mimeType: 'image/jpeg',
+        ),
+        hint: 'Fage 0%',
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Greek Yogurt (170g)');
+      expect(result.calories, 100);
+      expect(result.proteinG, 17);
+      expect(result.carbsG, 6);
+      expect(result.fatG, 0);
+      expect(result.confidence, 0.97);
+
+      expect(requestBody, isNotNull);
+      final List<dynamic> contents = requestBody!['contents'] as List<dynamic>;
+      final Map<String, dynamic> userContent =
+          contents.first as Map<String, dynamic>;
+      final List<dynamic> parts = userContent['parts'] as List<dynamic>;
+      expect(
+        parts.any((dynamic part) {
+          if (part is! Map<String, dynamic>) {
+            return false;
+          }
+          final dynamic inlineData = part['inline_data'] ?? part['inlineData'];
+          return inlineData is Map<String, dynamic>;
+        }),
+        isTrue,
+      );
+    });
+
+    test('returns null for an empty nutrition label photo', () async {
+      var requestCount = 0;
+      final mockClient = MockClient((request) async {
+        requestCount += 1;
+        return http.Response('should not be called', 500);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(bytes: <int>[]),
+      );
+
+      expect(result, isNull);
+      expect(requestCount, 0);
+    });
+
     test('returns null when calories is missing or invalid', () async {
       final mockClient = MockClient((request) async {
         final responsePayload = {
@@ -182,6 +272,359 @@ void main() {
 
       final result = await parser.parse('something');
       expect(result, isNull);
+    });
+
+    test('parses exact Gemini response with thoughtSignature and usage metadata from issue report', () async {
+      const rawResponse = '''{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\\n  \\"mealLabel\\": \\"Protein Powder\\",\\n  \\"calories\\": 180,\\n  \\"proteinG\\": 22,\\n  \\"carbsG\\": 20,\\n  \\"fatG\\": 2,\\n  \\"confidence\\": 0.95\\n}",
+            "thoughtSignature": "El4KXAERTTIPSud1YusXFJaCE92r5AJJNQBT9WWYqrmgs9USE+EggBuv96yyHfoWPaOiAQGAA213r3Ezn4+UexcIRxq8I83aFMaQGEvtOcBG0L0ctXkH0U+Ohl/VvVlx"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1176,
+    "candidatesTokenCount": 63,
+    "totalTokenCount": 1239,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 112
+      },
+      {
+        "modality": "IMAGE",
+        "tokenCount": 1064
+      }
+    ]
+  },
+  "turnToken": "v1_ChdZMWVFYXQtMEpxRFNnOFVQMHQyXzhRTRIXWTFlRWF0LTBKcURTZzhVUDB0Ml84UU0"
+}''';
+
+      final mockClient = MockClient((request) async {
+        return http.Response(rawResponse, 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Protein Powder');
+      expect(result.calories, 180);
+      expect(result.proteinG, 22);
+      expect(result.carbsG, 20);
+      expect(result.fatG, 2);
+      expect(result.confidence, 0.95);
+    });
+
+    test('handles multi-part response with thought part before answer part', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'thought': true,
+                  'text': 'The nutrition label shows 1 scoop (30g) has {"calories": 180}. Calculating macros...',
+                },
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Whey Protein Isolate',
+                    'calories': 180,
+                    'proteinG': 25,
+                    'carbsG': 2,
+                    'fatG': 1,
+                    'confidence': 0.98,
+                  }),
+                  'thoughtSignature': 'sig123',
+                },
+              ],
+              'role': 'model',
+            },
+            'finishReason': 'STOP',
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/png',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Whey Protein Isolate');
+      expect(result.calories, 180);
+      expect(result.proteinG, 25);
+      expect(result.carbsG, 2);
+      expect(result.fatG, 1);
+      expect(result.confidence, 0.98);
+    });
+
+    test('handles string values with units and alternative keys', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'product_name': 'Almond Milk',
+                    'kcal': '60 kcal',
+                    'protein': '1g',
+                    'carbohydrate': '8.5 g',
+                    'fat': '2.5g',
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Almond Milk');
+      expect(result.calories, 60);
+      expect(result.proteinG, 1);
+      expect(result.carbsG, 9); // 8.5 rounded
+      expect(result.fatG, 3); // 2.5 rounded
+    });
+
+    test('handles nested nutrition object', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'foodName': 'Protein Bar',
+                    'nutrition': {
+                      'calories': 210,
+                      'protein': 20,
+                      'carbs': 22,
+                      'fat': 7,
+                    },
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Protein Bar');
+      expect(result.calories, 210);
+      expect(result.proteinG, 20);
+      expect(result.carbsG, 22);
+      expect(result.fatG, 7);
+    });
+
+    test('handles JSON array in candidate text', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode([
+                    {
+                      'mealLabel': 'Chia Pudding',
+                      'calories': 150,
+                      'proteinG': 5,
+                      'carbsG': 15,
+                      'fatG': 8,
+                    }
+                  ]),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Chia Pudding');
+      expect(result.calories, 150);
+      expect(result.proteinG, 5);
+      expect(result.carbsG, 15);
+      expect(result.fatG, 8);
+    });
+
+    test('extracts complete detailed nutrition info (saturated fat, fiber, added sugar, sodium)', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Greek Yogurt with Granola',
+                    'calories': 320,
+                    'proteinG': 22,
+                    'carbsG': 36,
+                    'fatG': 8,
+                    'saturatedFatG': 3,
+                    'fiberG': 6,
+                    'addedSugarG': 9,
+                    'sodiumMg': 140,
+                    'confidence': 0.94,
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('greek yogurt with granola');
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Greek Yogurt with Granola');
+      expect(result.calories, 320);
+      expect(result.proteinG, 22);
+      expect(result.carbsG, 36);
+      expect(result.fatG, 8);
+      expect(result.saturatedFatG, 3);
+      expect(result.fiberG, 6);
+      expect(result.addedSugarG, 9);
+      expect(result.sodiumMg, 140);
+    });
+
+    test('extracts complete detailed nutrition from label scan with alternate key names', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'product_name': 'Oat Crunch Cereal',
+                    'calories': 210,
+                    'protein_g': 5,
+                    'total_carbohydrate': 44,
+                    'total_fat': 3,
+                    'saturated_fat': 1,
+                    'dietary_fiber': 4,
+                    'added_sugars': 12,
+                    'sodium_mg': 190,
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Oat Crunch Cereal');
+      expect(result.calories, 210);
+      expect(result.proteinG, 5);
+      expect(result.carbsG, 44);
+      expect(result.fatG, 3);
+      expect(result.saturatedFatG, 1);
+      expect(result.fiberG, 4);
+      expect(result.addedSugarG, 12);
+      expect(result.sodiumMg, 190);
     });
   });
 }
