@@ -63,14 +63,26 @@ class FoodEntryModal extends StatefulWidget {
 
   static Future<dynamic> showEdit(
     BuildContext context,
-    FoodLogEntry entry,
-  ) {
+    FoodLogEntry entry, {
+    List<SavedFood> savedFoods = const <SavedFood>[],
+    Future<void> Function(SavedFood food)? onSaveFood,
+    Future<void> Function(SavedFood food)? onDeleteSavedFood,
+    NutritionLabelImageSource? nutritionLabelImageSource,
+    NutritionLabelParseCallback? onParseNutritionLabel,
+    bool hasConfiguredApiKey = false,
+  }) {
     return showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) => FoodEntryModal(
         initialEntry: entry,
+        savedFoods: savedFoods,
+        onSaveFood: onSaveFood,
+        onDeleteSavedFood: onDeleteSavedFood,
+        nutritionLabelImageSource: nutritionLabelImageSource,
+        onParseNutritionLabel: onParseNutritionLabel,
+        hasConfiguredApiKey: hasConfiguredApiKey,
       ),
     );
   }
@@ -118,17 +130,38 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
 
   bool get _isEditing => widget.initialEntry != null;
 
+  String get _basePortionDisplay {
+    final String sizeStr = _basePortionSize == _basePortionSize.toInt().toDouble()
+        ? '${_basePortionSize.toInt()}'
+        : _basePortionSize.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
+    final String unitStr =
+        _basePortionUnit.trim().isEmpty ? 'serving' : _basePortionUnit.trim();
+    if (unitStr.toLowerCase() == 'serving' ||
+        unitStr.toLowerCase() == 'portion') {
+      if (_basePortionSize == 1.0) {
+        return '1 $unitStr';
+      } else {
+        return '$sizeStr ${unitStr}s';
+      }
+    }
+    return '$sizeStr $unitStr';
+  }
+
   @override
   void initState() {
     super.initState();
     final FoodLogEntry? entry = widget.initialEntry;
     _nameController = TextEditingController(text: entry?.mealLabel ?? '');
-    _calController = TextEditingController(text: entry != null ? '${entry.calories}' : '');
-    _proteinController = TextEditingController(text: entry != null ? '${entry.proteinG}' : '0');
-    _carbsController = TextEditingController(text: entry != null ? '${entry.carbsG}' : '0');
-    _fatController = TextEditingController(text: entry != null ? '${entry.fatG}' : '0');
-    _saturatedFatController =
-        TextEditingController(text: entry != null ? '${entry.saturatedFatG}' : '0');
+    _calController =
+        TextEditingController(text: entry != null ? '${entry.calories}' : '');
+    _proteinController =
+        TextEditingController(text: entry != null ? '${entry.proteinG}' : '0');
+    _carbsController =
+        TextEditingController(text: entry != null ? '${entry.carbsG}' : '0');
+    _fatController =
+        TextEditingController(text: entry != null ? '${entry.fatG}' : '0');
+    _saturatedFatController = TextEditingController(
+        text: entry != null ? '${entry.saturatedFatG}' : '0');
     _fiberController =
         TextEditingController(text: entry != null ? '${entry.fiberG}' : '0');
     _addedSugarController =
@@ -140,11 +173,68 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
             entry.fiberG > 0 ||
             entry.addedSugarG > 0 ||
             entry.sodiumMg > 0);
-    _portionQuantityController = TextEditingController(text: '1');
-    _savePortionSizeController = TextEditingController(text: '1');
-    _savePortionUnitController = TextEditingController(text: 'serving');
-    _selectedMealType = entry?.mealType ?? widget.initialMealType ?? MealType.forTime();
+
+    if (entry != null) {
+      _baseCalories = entry.calories;
+      _baseProtein = entry.proteinG;
+      _baseCarbs = entry.carbsG;
+      _baseFat = entry.fatG;
+      _baseSaturatedFat = entry.saturatedFatG;
+      _baseFiber = entry.fiberG;
+      _baseAddedSugar = entry.addedSugarG;
+      _baseSodium = entry.sodiumMg;
+      _basePortionSize = entry.portionSize > 0 ? entry.portionSize : 1.0;
+      _basePortionUnit = entry.portionUnit.trim().isNotEmpty
+          ? entry.portionUnit.trim()
+          : 'serving';
+    }
+
+    final String portionStr =
+        _basePortionSize == _basePortionSize.toInt().toDouble()
+            ? '${_basePortionSize.toInt()}'
+            : '$_basePortionSize';
+    _portionQuantityController = TextEditingController(text: portionStr);
+    _savePortionSizeController = TextEditingController(text: portionStr);
+    _savePortionUnitController = TextEditingController(text: _basePortionUnit);
+    _selectedMealType =
+        entry?.mealType ?? widget.initialMealType ?? MealType.forTime();
     _savedFoods = List<SavedFood>.from(widget.savedFoods);
+  }
+
+  void _syncBaseNutritionFromInputs() {
+    if (_currentPortionMultiplier > 0) {
+      _baseCalories =
+          ((int.tryParse(_calController.text.trim()) ?? 0) / _currentPortionMultiplier)
+              .round();
+      _baseProtein =
+          ((int.tryParse(_proteinController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseCarbs =
+          ((int.tryParse(_carbsController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseFat =
+          ((int.tryParse(_fatController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseSaturatedFat =
+          ((int.tryParse(_saturatedFatController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseFiber =
+          ((int.tryParse(_fiberController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseAddedSugar =
+          ((int.tryParse(_addedSugarController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+      _baseSodium =
+          ((int.tryParse(_sodiumController.text.trim()) ?? 0) /
+                  _currentPortionMultiplier)
+              .round();
+    }
   }
 
   void _calculateCaloriesFromMacros() {
@@ -154,6 +244,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
     final int calculated = (p * 4) + (c * 4) + (f * 9);
     setState(() {
       _calController.text = calculated.toString();
+      _syncBaseNutritionFromInputs();
     });
   }
 
@@ -350,6 +441,28 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
         _filledFromLabel = true;
         _selectedSavedFoodId = null;
         _selectedSavedFood = null;
+        _baseCalories = result.calories;
+        _baseProtein = result.proteinG;
+        _baseCarbs = result.carbsG;
+        _baseFat = result.fatG;
+        _baseSaturatedFat = result.saturatedFatG;
+        _baseFiber = result.fiberG;
+        _baseAddedSugar = result.addedSugarG;
+        _baseSodium = result.sodiumMg;
+        _basePortionSize = result.portionSize > 0 ? result.portionSize : 1.0;
+        _basePortionUnit = result.portionUnit.trim().isNotEmpty
+            ? result.portionUnit.trim()
+            : 'serving';
+        _currentPortionMultiplier = 1.0;
+
+        final String portionStr =
+            _basePortionSize == _basePortionSize.toInt().toDouble()
+                ? '${_basePortionSize.toInt()}'
+                : '$_basePortionSize';
+        _portionQuantityController.text = portionStr;
+        _savePortionSizeController.text = portionStr;
+        _savePortionUnitController.text = _basePortionUnit;
+
         _nameController.text = result.mealLabel;
         _calController.text = result.calories.toString();
         _proteinController.text = result.proteinG.toString();
@@ -364,6 +477,9 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
             result.addedSugarG > 0 ||
             result.sodiumMg > 0) {
           _showDetailedNutrition = true;
+        }
+        if (result.confidence >= 0.90) {
+          _saveForFutureUse = true;
         }
         _errorMessage = null;
       });
@@ -442,12 +558,15 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
     }
 
     final double savePortionSize =
-        double.tryParse(_savePortionSizeController.text.trim()) ?? 1.0;
-    final String savePortionUnit = _savePortionUnitController.text.trim().isEmpty
-        ? 'serving'
-        : _savePortionUnitController.text.trim();
+        double.tryParse(_savePortionSizeController.text.trim()) ??
+            (double.tryParse(_portionQuantityController.text.trim()) ??
+                _basePortionSize);
+    final String savePortionUnit =
+        _savePortionUnitController.text.trim().isEmpty
+            ? (_basePortionUnit.isNotEmpty ? _basePortionUnit : 'serving')
+            : _savePortionUnitController.text.trim();
 
-    final SavedFood? foodToSave = _saveForFutureUse && !_isEditing
+    final SavedFood? foodToSave = _saveForFutureUse
         ? SavedFood(
             name: name,
             calories: calories,
@@ -480,6 +599,15 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
       }
     }
 
+    final double entryPortionSize =
+        double.tryParse(_portionQuantityController.text.trim()) ??
+            (double.tryParse(_savePortionSizeController.text.trim()) ??
+                _basePortionSize);
+    final String entryPortionUnit =
+        _savePortionUnitController.text.trim().isNotEmpty
+            ? _savePortionUnitController.text.trim()
+            : (_basePortionUnit.isNotEmpty ? _basePortionUnit : 'serving');
+
     final FoodLogEntry result = FoodLogEntry(
       id: widget.initialEntry?.id,
       mealLabel: name,
@@ -491,6 +619,8 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
       fiberG: fiber,
       addedSugarG: addedSugar,
       sodiumMg: sodium,
+      portionSize: entryPortionSize > 0 ? entryPortionSize : 1.0,
+      portionUnit: entryPortionUnit,
       rangeText: widget.initialEntry?.rangeText,
       sourceLabel: widget.initialEntry?.sourceLabel ??
           (_selectedSavedFoodId != null
@@ -616,31 +746,129 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
             ),
 
             if (!_isEditing) ...<Widget>[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+              const SizedBox(height: 14),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
                   key: const Key('scanNutritionLabelButton'),
-                  onPressed: _isScanningLabel || _isSaving ? null : _scanNutritionLabel,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  icon: _isScanningLabel
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.document_scanner_outlined, size: 16, color: AppColors.primary),
-                  label: Text(
-                    _isScanningLabel ? 'Reading label...' : 'Scan nutrition label',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+                  onTap: _isScanningLabel || _isSaving ? null : _scanNutritionLabel,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isDark
+                            ? <Color>[
+                                AppColors.primary.withValues(alpha: 0.16),
+                                const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+                              ]
+                            : <Color>[
+                                AppColors.primary.withValues(alpha: 0.08),
+                                const Color(0xFF8B5CF6).withValues(alpha: 0.04),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _filledFromLabel
+                            ? AppColors.success.withValues(alpha: 0.5)
+                            : AppColors.primary.withValues(alpha: 0.35),
+                        width: 1.2,
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: isDark ? 0.08 : 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Container(
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: _filledFromLabel
+                                ? AppColors.success.withValues(alpha: 0.15)
+                                : AppColors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: _isScanningLabel
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: AppColors.primary,
+                                  ),
+                                )
+                              : Icon(
+                                  _filledFromLabel
+                                      ? Icons.check_circle_rounded
+                                      : Icons.document_scanner_rounded,
+                                  size: 20,
+                                  color: _filledFromLabel ? AppColors.success : AppColors.primary,
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Text(
+                                    _isScanningLabel
+                                        ? 'Reading label...'
+                                        : 'Scan nutrition label',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.2,
+                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'AI Vision',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.primaryLight,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _filledFromLabel
+                                    ? 'Auto-filled from photo • Tap to re-scan'
+                                    : 'Take photo or choose from gallery to auto-fill macros',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: _filledFromLabel
+                                      ? AppColors.success
+                                      : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                  fontWeight: _filledFromLabel ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.camera_alt_rounded,
+                          size: 18,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -650,7 +878,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                 Text(
                   'Label scanned. Review the values, then log or save.',
                   key: const Key('nutritionLabelScanSuccess'),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: AppColors.success,
@@ -695,7 +923,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
               ),
             ],
 
-            if (!_isEditing && _selectedSavedFood != null)
+            if (_selectedSavedFood != null || _isEditing || _filledFromLabel)
               _portionSelectorWidget(isDark),
 
             if (_errorMessage != null) ...<Widget>[
@@ -785,6 +1013,62 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                 ),
               ),
             ),
+
+            if (_savedFoods.isNotEmpty)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _nameController,
+                builder: (BuildContext context, TextEditingValue value, Widget? _) {
+                  final String query = value.text.trim().toLowerCase();
+                  if (query.isEmpty) return const SizedBox.shrink();
+                  final List<SavedFood> matching = _savedFoods
+                      .where((SavedFood f) =>
+                          f.id != _selectedSavedFoodId &&
+                          (f.name.toLowerCase().contains(query) ||
+                              query.contains(f.name.toLowerCase())))
+                      .toList();
+                  if (matching.isEmpty) return const SizedBox.shrink();
+
+                  return Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Row(
+                          children: <Widget>[
+                            Icon(Icons.inventory_2_outlined, size: 13, color: AppColors.primary),
+                            SizedBox(width: 4),
+                            Text(
+                              'Matching Stored Foods (Tap to fill):',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: matching.map((SavedFood food) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ActionChip(
+                                  key: Key('modalStoredFoodChip_${food.id}'),
+                                  avatar: const Icon(
+                                    Icons.bookmark_rounded,
+                                    size: 13,
+                                    color: AppColors.primary,
+                                  ),
+                                  label: Text('${food.name} (${food.calories} kcal)'),
+                                  onPressed: () => _useSavedFood(food),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
 
             const SizedBox(height: 12),
 
@@ -964,7 +1248,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
               ),
             ),
 
-            if (!_isEditing && widget.onSaveFood != null) ...<Widget>[
+            if (widget.onSaveFood != null) ...<Widget>[
               const SizedBox(height: 4),
               Container(
                 decoration: BoxDecoration(
@@ -1126,11 +1410,10 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
   }
 
   Widget _portionSelectorWidget(bool isDark) {
-    final SavedFood? food = _selectedSavedFood;
-    if (food == null) return const SizedBox.shrink();
-
-    final String unitLabel = _basePortionUnit.isNotEmpty ? _basePortionUnit : 'serving';
-    final double step = _basePortionSize > 10 ? 25.0 : (_basePortionSize > 1 ? 1.0 : 0.5);
+    final String unitLabel =
+        _basePortionUnit.isNotEmpty ? _basePortionUnit : 'serving';
+    final double step =
+        _basePortionSize > 10 ? 25.0 : (_basePortionSize > 1 ? 1.0 : 0.5);
 
     return Container(
       key: const Key('portionSelectorCard'),
@@ -1148,7 +1431,8 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(Icons.pie_chart_outline_rounded, size: 18, color: AppColors.primary),
+              const Icon(Icons.pie_chart_outline_rounded,
+                  size: 18, color: AppColors.primary),
               const SizedBox(width: 8),
               const Text(
                 'Choose Portion',
@@ -1156,13 +1440,14 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Base: ${food.portionDisplay}',
+                  'Base: $_basePortionDisplay',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

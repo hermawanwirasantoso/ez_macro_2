@@ -332,6 +332,8 @@ void main() {
         proteinG: 10,
         carbsG: 35,
         fatG: 16,
+        portionSize: 2.0,
+        portionUnit: 'slices',
         mealType: MealType.breakfast,
       );
 
@@ -344,12 +346,63 @@ void main() {
       expect(find.text('Edit Meal'), findsOneWidget);
       expect(find.byKey(const Key('deleteEntryModalButton')), findsOneWidget);
       expect(find.text('Save Changes'), findsOneWidget);
+      expect(find.byKey(const Key('portionSelectorCard')), findsOneWidget);
+      expect(find.text('Base: 2 slices'), findsOneWidget);
 
       final TextField nameField = tester.widget<TextField>(find.byKey(const Key('mealLabelField')));
       final TextField calField = tester.widget<TextField>(find.byKey(const Key('caloriesField')));
+      final TextField portionField = tester.widget<TextField>(find.byKey(const Key('portionInputField')));
 
       expect(nameField.controller?.text, 'Avocado Toast');
       expect(calField.controller?.text, '320');
+      expect(portionField.controller?.text, '2');
+    });
+
+    testWidgets('allows saving an edited entry as custom reusable food', (WidgetTester tester) async {
+      SavedFood? savedFood;
+
+      final FoodLogEntry existing = FoodLogEntry(
+        id: 'entry_salmon',
+        mealLabel: 'Salmon Rice Bowl',
+        calories: 550,
+        proteinG: 40,
+        carbsG: 60,
+        fatG: 15,
+        portionSize: 1.0,
+        portionUnit: 'bowl',
+        mealType: MealType.dinner,
+      );
+
+      await tester.pumpWidget(
+        buildTestHost(
+          FoodEntryModal(
+            initialEntry: existing,
+            onSaveFood: (SavedFood food) async {
+              savedFood = food;
+            },
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(find.byKey(const Key('saveForFutureUseCheckbox')));
+      await tester.tap(find.byKey(const Key('saveForFutureUseCheckbox')));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('portionSizeField')));
+      expect(find.byKey(const Key('portionSizeField')), findsOneWidget);
+      expect(find.byKey(const Key('portionUnitField')), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('portionUnitField')), 'bowl');
+
+      await tester.ensureVisible(find.byKey(const Key('saveEntryButton')));
+      await tester.tap(find.byKey(const Key('saveEntryButton')));
+      await tester.pumpAndSettle();
+
+      expect(savedFood, isNotNull);
+      expect(savedFood!.name, 'Salmon Rice Bowl');
+      expect(savedFood!.calories, 550);
+      expect(savedFood!.proteinG, 40);
+      expect(savedFood!.portionUnit, 'bowl');
     });
   });
 }

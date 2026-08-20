@@ -76,10 +76,13 @@ class PreferencesCalorieStorage implements CalorieStorage {
   static final Map<String, DailyLog> _memoryLogs = <String, DailyLog>{};
   static final Map<String, SavedFood> _memorySavedFoods = <String, SavedFood>{};
   static UserSettings? _memorySettings;
+  static SharedPreferences? _cachedPrefs;
 
   Future<SharedPreferences?> _getPrefs() async {
+    if (_cachedPrefs != null) return _cachedPrefs;
     try {
-      return await SharedPreferences.getInstance();
+      _cachedPrefs = await SharedPreferences.getInstance();
+      return _cachedPrefs;
     } catch (e) {
       _debugLog('Could not initialize SharedPreferences, using session cache: $e');
       return null;
@@ -112,20 +115,22 @@ class PreferencesCalorieStorage implements CalorieStorage {
     final String dateKey = log.dateString;
     _memoryLogs[dateKey] = log;
 
-    try {
-      final SharedPreferences? prefs = await _getPrefs();
-      if (prefs != null) {
-        await prefs.setString('$_logKeyPrefix$dateKey', log.toJson());
-
-        // Update index of logged dates
-        final List<String> dates = prefs.getStringList(_loggedDatesKey) ?? <String>[];
-        if (!dates.contains(dateKey)) {
-          dates.add(dateKey);
-          await prefs.setStringList(_loggedDatesKey, dates);
-        }
-      }
-    } catch (e) {
+    _persistDayLog(log, dateKey).catchError((e) {
       _debugLog('Failed to save day log for $dateKey to preferences: $e');
+    });
+  }
+
+  Future<void> _persistDayLog(DailyLog log, String dateKey) async {
+    final SharedPreferences? prefs = await _getPrefs();
+    if (prefs != null) {
+      await prefs.setString('$_logKeyPrefix$dateKey', log.toJson());
+
+      // Update index of logged dates
+      final List<String> dates = prefs.getStringList(_loggedDatesKey) ?? <String>[];
+      if (!dates.contains(dateKey)) {
+        dates.add(dateKey);
+        await prefs.setStringList(_loggedDatesKey, dates);
+      }
     }
   }
 
@@ -134,18 +139,20 @@ class PreferencesCalorieStorage implements CalorieStorage {
     final String dateKey = DailyLog.formatDateKey(date);
     _memoryLogs.remove(dateKey);
 
-    try {
-      final SharedPreferences? prefs = await _getPrefs();
-      if (prefs != null) {
-        await prefs.remove('$_logKeyPrefix$dateKey');
-        final List<String> dates = prefs.getStringList(_loggedDatesKey) ?? <String>[];
-        if (dates.contains(dateKey)) {
-          dates.remove(dateKey);
-          await prefs.setStringList(_loggedDatesKey, dates);
-        }
-      }
-    } catch (e) {
+    _persistDeleteDayLog(dateKey).catchError((e) {
       _debugLog('Failed to delete day log for $dateKey: $e');
+    });
+  }
+
+  Future<void> _persistDeleteDayLog(String dateKey) async {
+    final SharedPreferences? prefs = await _getPrefs();
+    if (prefs != null) {
+      await prefs.remove('$_logKeyPrefix$dateKey');
+      final List<String> dates = prefs.getStringList(_loggedDatesKey) ?? <String>[];
+      if (dates.contains(dateKey)) {
+        dates.remove(dateKey);
+        await prefs.setStringList(_loggedDatesKey, dates);
+      }
     }
   }
 
@@ -322,6 +329,7 @@ class PreferencesCalorieStorage implements CalorieStorage {
     _memoryLogs.clear();
     _memorySavedFoods.clear();
     _memorySettings = const UserSettings();
+    _cachedPrefs = null;
 
     try {
       final SharedPreferences? prefs = await _getPrefs();

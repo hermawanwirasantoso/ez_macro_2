@@ -91,6 +91,8 @@ class RegexCalorieParser implements CalorieParser {
         ? 0.88
         : (phraseEstimate?.confidence ?? 0.72).clamp(0.0, 1.0).toDouble();
 
+    final ({double size, String unit}) portion = _extractPortion(trimmedInput);
+
     return ParseResult(
       mealLabel: mealLabel,
       calories: safeCalories,
@@ -102,6 +104,8 @@ class RegexCalorieParser implements CalorieParser {
       fiberG: fiber,
       addedSugarG: addedSugar,
       sodiumMg: sodium,
+      portionSize: portion.size,
+      portionUnit: portion.unit,
     );
   }
 
@@ -350,6 +354,47 @@ class RegexCalorieParser implements CalorieParser {
       }
     }
     return null;
+  }
+
+  ({double size, String unit}) _extractPortion(String input) {
+    final RegExpMatch? gramMatch = RegExp(
+      r'\b(\d+(?:\.\d+)?)\s*(g|grams?)\b',
+      caseSensitive: false,
+    ).firstMatch(input);
+    if (gramMatch != null) {
+      final double? val = double.tryParse(gramMatch.group(1) ?? '');
+      if (val != null && val > 0) {
+        return (size: val, unit: 'g');
+      }
+    }
+
+    final RegExpMatch? unitMatch = RegExp(
+      r'\b(\d+(?:\.\d+)?)\s*(oz|ounces?|cups?|scoops?|slices?|bowls?|pieces?|pcs?|tbsp|tsp|ml)\b',
+      caseSensitive: false,
+    ).firstMatch(input);
+    if (unitMatch != null) {
+      final double? val = double.tryParse(unitMatch.group(1) ?? '');
+      final String rawUnit = (unitMatch.group(2) ?? 'serving').toLowerCase();
+      final String normalizedUnit = rawUnit.startsWith('ounce')
+          ? 'oz'
+          : rawUnit.startsWith('cup')
+              ? 'cup'
+              : rawUnit.startsWith('scoop')
+                  ? 'scoop'
+                  : rawUnit.startsWith('slice')
+                      ? 'slice'
+                      : rawUnit.startsWith('bowl')
+                          ? 'bowl'
+                          : rawUnit.startsWith('piece') || rawUnit.startsWith('pc')
+                              ? 'piece'
+                              : rawUnit;
+      if (val != null && val > 0) {
+        return (size: val, unit: normalizedUnit);
+      }
+    }
+
+    final double quantity = _extractServingQuantity(input.toLowerCase());
+    return (size: quantity, unit: 'serving');
   }
 
   ({int protein, int carbs, int fat}) _estimateMacrosForCalories(int calories) {

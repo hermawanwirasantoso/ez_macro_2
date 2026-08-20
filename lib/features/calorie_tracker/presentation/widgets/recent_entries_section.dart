@@ -125,13 +125,13 @@ class RecentEntriesSection extends StatelessWidget {
                   color: isDark ? AppColors.darkCard : AppColors.lightCard,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : AppColors.lightBorder,
                   ),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
                       color: isDark
                           ? Colors.black.withValues(alpha: 0.15)
-                          : const Color(0xFF64748B).withValues(alpha: 0.05),
+                          : const Color(0xFF5A4D3A).withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -188,6 +188,11 @@ class RecentEntriesSection extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 4),
                       child: Row(
                         children: <Widget>[
+                          _miniMacroBadge(
+                            entry.portionDisplay,
+                            isDark ? Colors.white70 : Colors.black87,
+                          ),
+                          const SizedBox(width: 4),
                           _miniMacroBadge('P: ${entry.proteinG}g', AppColors.protein),
                           const SizedBox(width: 4),
                           _miniMacroBadge('C: ${entry.carbsG}g', AppColors.carbs),

@@ -626,5 +626,131 @@ void main() {
       expect(result.addedSugarG, 12);
       expect(result.sodiumMg, 190);
     });
+
+    test('extracts portion size and portion unit from text JSON', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Grilled Chicken Breast',
+                    'calories': 330,
+                    'proteinG': 62,
+                    'carbsG': 0,
+                    'fatG': 8,
+                    'portionSize': 200,
+                    'portionUnit': 'g',
+                    'confidence': 0.95,
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('200g chicken breast');
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Grilled Chicken Breast');
+      expect(result.calories, 330);
+      expect(result.portionSize, 200.0);
+      expect(result.portionUnit, 'g');
+      expect(result.portionDisplay, '200 g');
+    });
+
+    test('extracts portion size and portion unit from label scan with alternate key names', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Almond Milk',
+                    'calories': 60,
+                    'proteinG': 2,
+                    'carbsG': 8,
+                    'fatG': 3,
+                    'serving_size': 240,
+                    'serving_unit': 'ml',
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parseNutritionLabel(
+        const NutritionLabelImage(
+          bytes: <int>[1, 2, 3],
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Almond Milk');
+      expect(result.calories, 60);
+      expect(result.portionSize, 240.0);
+      expect(result.portionUnit, 'ml');
+      expect(result.portionDisplay, '240 ml');
+    });
+
+    test('defaults portion size to 1.0 and unit to serving when omitted', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Apple',
+                    'calories': 95,
+                    'proteinG': 0,
+                    'carbsG': 25,
+                    'fatG': 0,
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('apple');
+      expect(result, isNotNull);
+      expect(result!.portionSize, 1.0);
+      expect(result.portionUnit, 'serving');
+      expect(result.portionDisplay, '1 serving');
+    });
   });
 }

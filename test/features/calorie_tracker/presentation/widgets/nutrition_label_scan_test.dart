@@ -39,6 +39,8 @@ void main() {
                 proteinG: 3,
                 carbsG: 16,
                 fatG: 5,
+                portionSize: 240,
+                portionUnit: 'ml',
               );
             },
           ),
@@ -74,6 +76,12 @@ void main() {
         tester.widget<TextField>(find.byKey(const Key('fatField'))).controller?.text,
         '5',
       );
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('portionInputField'))).controller?.text,
+        '240',
+      );
+      expect(find.byKey(const Key('portionSelectorCard')), findsOneWidget);
+      expect(find.text('Base: 240 ml'), findsOneWidget);
       expect(find.textContaining('Label scanned'), findsOneWidget);
     });
 

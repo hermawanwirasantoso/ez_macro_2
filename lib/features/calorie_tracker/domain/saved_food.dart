@@ -65,10 +65,13 @@ class SavedFood {
     double? chosenPortionSize,
   }) {
     final double effectiveMultiplier;
+    final double finalPortionSize;
     if (chosenPortionSize != null && portionSize > 0) {
       effectiveMultiplier = chosenPortionSize / portionSize;
+      finalPortionSize = chosenPortionSize;
     } else {
       effectiveMultiplier = portionMultiplier <= 0 ? 1.0 : portionMultiplier;
+      finalPortionSize = portionSize * effectiveMultiplier;
     }
 
     return FoodLogEntry(
@@ -81,6 +84,8 @@ class SavedFood {
       fiberG: (fiberG * effectiveMultiplier).round().clamp(0, 9999),
       addedSugarG: (addedSugarG * effectiveMultiplier).round().clamp(0, 9999),
       sodiumMg: (sodiumMg * effectiveMultiplier).round().clamp(0, 99999),
+      portionSize: finalPortionSize,
+      portionUnit: portionUnit,
       sourceLabel: 'Saved',
       mealType: mealType,
       timestamp: timestamp,

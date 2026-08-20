@@ -10,6 +10,8 @@ class ParseResult {
     this.fiberG = 0,
     this.addedSugarG = 0,
     this.sodiumMg = 0,
+    this.portionSize = 1.0,
+    this.portionUnit = 'serving',
   });
 
   final String mealLabel;
@@ -22,6 +24,17 @@ class ParseResult {
   final int fiberG;
   final int addedSugarG;
   final int sodiumMg;
+  final double portionSize;
+  final String portionUnit;
+
+  String get portionDisplay {
+    final String sizeStr = portionSize == portionSize.toInt().toDouble()
+        ? '${portionSize.toInt()}'
+        : portionSize.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
+    final String unitStr =
+        portionUnit.trim().isEmpty ? 'serving' : portionUnit.trim();
+    return '$sizeStr $unitStr';
+  }
 
   double uncertaintyPercent({required bool isFallback}) {
     if (isFallback) {
@@ -52,6 +65,8 @@ class ParseResult {
     int? fiberG,
     int? addedSugarG,
     int? sodiumMg,
+    double? portionSize,
+    String? portionUnit,
   }) {
     return ParseResult(
       mealLabel: mealLabel,
@@ -64,6 +79,8 @@ class ParseResult {
       fiberG: fiberG ?? this.fiberG,
       addedSugarG: addedSugarG ?? this.addedSugarG,
       sodiumMg: sodiumMg ?? this.sodiumMg,
+      portionSize: portionSize ?? this.portionSize,
+      portionUnit: portionUnit ?? this.portionUnit,
     );
   }
 }

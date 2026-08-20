@@ -8,6 +8,7 @@ class UserSettings {
     this.targetCarbsG = 255,
     this.targetFatG = 60,
     this.isDarkMode = true,
+    this.hasCompletedOnboarding = true,
   });
 
   final int dailyGoal;
@@ -15,6 +16,7 @@ class UserSettings {
   final int targetCarbsG;
   final int targetFatG;
   final bool isDarkMode;
+  final bool hasCompletedOnboarding;
 
   UserSettings copyWith({
     int? dailyGoal,
@@ -22,6 +24,7 @@ class UserSettings {
     int? targetCarbsG,
     int? targetFatG,
     bool? isDarkMode,
+    bool? hasCompletedOnboarding,
   }) {
     return UserSettings(
       dailyGoal: dailyGoal ?? this.dailyGoal,
@@ -29,6 +32,7 @@ class UserSettings {
       targetCarbsG: targetCarbsG ?? this.targetCarbsG,
       targetFatG: targetFatG ?? this.targetFatG,
       isDarkMode: isDarkMode ?? this.isDarkMode,
+      hasCompletedOnboarding: hasCompletedOnboarding ?? this.hasCompletedOnboarding,
     );
   }
 
@@ -39,6 +43,7 @@ class UserSettings {
       'targetCarbsG': targetCarbsG,
       'targetFatG': targetFatG,
       'isDarkMode': isDarkMode,
+      'hasCompletedOnboarding': hasCompletedOnboarding,
     };
   }
 
@@ -49,6 +54,7 @@ class UserSettings {
       targetCarbsG: (map['targetCarbsG'] as num?)?.toInt() ?? 255,
       targetFatG: (map['targetFatG'] as num?)?.toInt() ?? 60,
       isDarkMode: map['isDarkMode'] as bool? ?? true,
+      hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ?? true,
     );
   }
 
@@ -65,7 +71,8 @@ class UserSettings {
         other.targetProteinG == targetProteinG &&
         other.targetCarbsG == targetCarbsG &&
         other.targetFatG == targetFatG &&
-        other.isDarkMode == isDarkMode;
+        other.isDarkMode == isDarkMode &&
+        other.hasCompletedOnboarding == hasCompletedOnboarding;
   }
 
   @override
@@ -76,6 +83,7 @@ class UserSettings {
       targetCarbsG,
       targetFatG,
       isDarkMode,
+      hasCompletedOnboarding,
     );
   }
 }

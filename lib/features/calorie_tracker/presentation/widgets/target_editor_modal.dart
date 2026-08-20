@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../tdee_calculator/domain/tdee_models.dart';
+import '../../../tdee_calculator/presentation/tdee_calculator_screen.dart';
 import '../../domain/tracker_state.dart';
 import '../theme/app_theme.dart';
 
@@ -139,6 +141,56 @@ class _TargetEditorModalState extends State<TargetEditorModal> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 14),
+
+            // Open TDEE Calculator Button
+            InkWell(
+              key: const Key('openTdeeCalculatorButton'),
+              onTap: () async {
+                final TdeeCalculationResult? result = await TdeeCalculatorScreen.showAsModal(context);
+                if (result != null) {
+                  setState(() {
+                    _calorieController.text = result.targetCalories.toString();
+                    _proteinController.text = result.proteinGrams.toString();
+                    _carbsController.text = result.carbsGrams.toString();
+                    _fatController.text = result.fatGrams.toString();
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: <Color>[
+                      AppColors.primary.withValues(alpha: isDark ? 0.25 : 0.15),
+                      AppColors.accent.withValues(alpha: isDark ? 0.2 : 0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: const Row(
+                  children: <Widget>[
+                    Icon(Icons.auto_awesome, size: 18, color: AppColors.primaryLight),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '⚡ Calculate with TDEE Calculator',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryLight,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 18, color: AppColors.primaryLight),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
 

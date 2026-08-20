@@ -33,15 +33,15 @@ class AppColors {
   static const Color darkTextPrimary = Color(0xFFF8FAFC);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
 
-  // Light Theme
-  static const Color lightBackground = Color(0xFFF4F6FB);
-  static const Color lightBackgroundGrad1 = Color(0xFFF8FAFC);
-  static const Color lightBackgroundGrad2 = Color(0xFFEFF3F9);
-  static const Color lightSurface = Color(0xFFFFFFFF);
-  static const Color lightCard = Color(0xFFFFFFFF);
-  static const Color lightBorder = Color(0x14000000);
-  static const Color lightTextPrimary = Color(0xFF0F172A);
-  static const Color lightTextSecondary = Color(0xFF64748B);
+  // Light Theme (Warm Yellowish White / Cozy Cream & Linen)
+  static const Color lightBackground = Color(0xFFF4EFE6);
+  static const Color lightBackgroundGrad1 = Color(0xFFFAF6EE);
+  static const Color lightBackgroundGrad2 = Color(0xFFECE4D5);
+  static const Color lightSurface = Color(0xFFFCFAF5);
+  static const Color lightCard = Color(0xFFFFFDF8);
+  static const Color lightBorder = Color(0x1A5C472E);
+  static const Color lightTextPrimary = Color(0xFF26211B);
+  static const Color lightTextSecondary = Color(0xFF70665B);
 }
 
 class AppTheme {

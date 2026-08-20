@@ -16,6 +16,8 @@ class FoodLogEntry {
     this.fiberG = 0,
     this.addedSugarG = 0,
     this.sodiumMg = 0,
+    this.portionSize = 1.0,
+    this.portionUnit = 'serving',
     this.rangeText,
     this.sourceLabel,
     this.spreadPercent,
@@ -35,6 +37,8 @@ class FoodLogEntry {
   final int fiberG;
   final int addedSugarG;
   final int sodiumMg;
+  final double portionSize;
+  final String portionUnit;
   final String? rangeText;
   final String? sourceLabel;
   final double? spreadPercent;
@@ -43,6 +47,15 @@ class FoodLogEntry {
 
   static String _generateId() {
     return '${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
+  }
+
+  String get portionDisplay {
+    final String sizeStr = portionSize == portionSize.toInt().toDouble()
+        ? '${portionSize.toInt()}'
+        : portionSize.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
+    final String unitStr =
+        portionUnit.trim().isEmpty ? 'serving' : portionUnit.trim();
+    return '$sizeStr $unitStr';
   }
 
   String get displayText {
@@ -67,6 +80,8 @@ class FoodLogEntry {
     int? fiberG,
     int? addedSugarG,
     int? sodiumMg,
+    double? portionSize,
+    String? portionUnit,
     String? rangeText,
     String? sourceLabel,
     double? spreadPercent,
@@ -84,6 +99,8 @@ class FoodLogEntry {
       fiberG: fiberG ?? this.fiberG,
       addedSugarG: addedSugarG ?? this.addedSugarG,
       sodiumMg: sodiumMg ?? this.sodiumMg,
+      portionSize: portionSize ?? this.portionSize,
+      portionUnit: portionUnit ?? this.portionUnit,
       rangeText: rangeText ?? this.rangeText,
       sourceLabel: sourceLabel ?? this.sourceLabel,
       spreadPercent: spreadPercent ?? this.spreadPercent,
@@ -104,6 +121,8 @@ class FoodLogEntry {
       'fiberG': fiberG,
       'addedSugarG': addedSugarG,
       'sodiumMg': sodiumMg,
+      'portionSize': portionSize,
+      'portionUnit': portionUnit,
       'rangeText': rangeText,
       'sourceLabel': sourceLabel,
       'spreadPercent': spreadPercent,
@@ -132,6 +151,16 @@ class FoodLogEntry {
       sodiumMg: (map['sodiumMg'] as num?)?.toInt() ??
           (map['sodium_mg'] as num?)?.toInt() ??
           0,
+      portionSize: (map['portionSize'] as num?)?.toDouble() ??
+          (map['portion_size'] as num?)?.toDouble() ??
+          (map['servingSize'] as num?)?.toDouble() ??
+          (map['serving_size'] as num?)?.toDouble() ??
+          1.0,
+      portionUnit: (map['portionUnit'] as String?)?.trim() ??
+          (map['portion_unit'] as String?)?.trim() ??
+          (map['servingUnit'] as String?)?.trim() ??
+          (map['serving_unit'] as String?)?.trim() ??
+          'serving',
       rangeText: map['rangeText'] as String?,
       sourceLabel: map['sourceLabel'] as String?,
       spreadPercent: (map['spreadPercent'] as num?)?.toDouble(),
@@ -186,17 +215,32 @@ class DailyLog {
     }
   }
 
+  DateTime get date => DateTime.tryParse(dateString) ?? DateTime.now();
+
   int get consumedCalories =>
       entries.fold<int>(0, (int sum, FoodLogEntry item) => sum + item.calories);
+
+  int get totalCalories => consumedCalories;
 
   int get proteinG =>
       entries.fold<int>(0, (int sum, FoodLogEntry item) => sum + item.proteinG);
 
+  int get totalProteinG => proteinG;
+
   int get carbsG =>
       entries.fold<int>(0, (int sum, FoodLogEntry item) => sum + item.carbsG);
 
+  int get totalCarbsG => carbsG;
+
   int get fatG =>
       entries.fold<int>(0, (int sum, FoodLogEntry item) => sum + item.fatG);
+
+  int get totalFatG => fatG;
+
+  int get totalSaturatedFatG => saturatedFatG;
+  int get totalFiberG => fiberG;
+  int get totalAddedSugarG => addedSugarG;
+  int get totalSodiumMg => sodiumMg;
 
   int get saturatedFatG =>
       entries.fold<int>(0, (int sum, FoodLogEntry item) => sum + item.saturatedFatG);

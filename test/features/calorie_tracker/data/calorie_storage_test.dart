@@ -228,6 +228,9 @@ void main() {
       expect(entry.fiberG, 8);
       expect(entry.addedSugarG, 2);
       expect(entry.sodiumMg, 750);
+      expect(entry.portionSize, 1.0);
+      expect(entry.portionUnit, 'serving');
+      expect(entry.portionDisplay, '1 serving');
       expect(entry.sourceLabel, 'Saved');
       expect(entry.mealType, MealType.lunch);
 
@@ -244,6 +247,8 @@ void main() {
       expect(scaledEntry.fiberG, 16);
       expect(scaledEntry.addedSugarG, 4);
       expect(scaledEntry.sodiumMg, 1500);
+      expect(scaledEntry.portionSize, 2.0);
+      expect(scaledEntry.portionUnit, 'serving');
 
       // Custom portion size & unit (e.g. 100g base, chose 150g)
       final SavedFood gramFood = SavedFood(
@@ -266,6 +271,9 @@ void main() {
       expect(gramEntry.fatG, 6);
       expect(gramEntry.saturatedFatG, 2);
       expect(gramEntry.sodiumMg, 111);
+      expect(gramEntry.portionSize, 150.0);
+      expect(gramEntry.portionUnit, 'g');
+      expect(gramEntry.portionDisplay, '150 g');
     });
 
     test('backward compatibility: fromMap populates default portion when missing', () {

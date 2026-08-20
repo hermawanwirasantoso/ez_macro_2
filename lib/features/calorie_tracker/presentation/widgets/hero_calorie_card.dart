@@ -48,21 +48,21 @@ class HeroCalorieCard extends StatelessWidget {
                   const Color(0xFF0F172A).withValues(alpha: 0.95),
                 ]
               : const <Color>[
-                  Colors.white,
-                  Color(0xFFF8FAFC),
+                  AppColors.lightCard,
+                  AppColors.lightBackgroundGrad1,
                 ],
         ),
         border: Border.all(
           color: isDark
               ? Colors.white.withValues(alpha: 0.12)
-              : Colors.black.withValues(alpha: 0.08),
+              : AppColors.lightBorder,
           width: 1.2,
         ),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: isDark
                 ? AppColors.primary.withValues(alpha: 0.12)
-                : const Color(0xFF64748B).withValues(alpha: 0.12),
+                : const Color(0xFF5A4D3A).withValues(alpha: 0.10),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),

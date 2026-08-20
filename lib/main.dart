@@ -8,6 +8,7 @@ import 'features/calorie_tracker/domain/calorie_parser.dart';
 import 'features/calorie_tracker/domain/nutrition_label_image.dart';
 import 'features/calorie_tracker/domain/parse_result.dart';
 import 'features/calorie_tracker/domain/saved_food.dart';
+import 'features/calorie_tracker/domain/saved_food_matcher.dart';
 import 'features/calorie_tracker/domain/tracker_state.dart';
 import 'features/calorie_tracker/presentation/theme/app_theme.dart';
 import 'features/calorie_tracker/presentation/widgets/ai_logger_card.dart';
@@ -18,7 +19,13 @@ import 'features/calorie_tracker/presentation/widgets/food_entry_modal.dart';
 import 'features/calorie_tracker/presentation/widgets/hero_calorie_card.dart';
 import 'features/calorie_tracker/presentation/widgets/meal_category_tabs.dart';
 import 'features/calorie_tracker/presentation/widgets/recent_entries_section.dart';
+import 'features/calorie_tracker/presentation/widgets/stored_food_portion_modal.dart';
 import 'features/calorie_tracker/presentation/widgets/target_editor_modal.dart';
+
+import 'features/weight_tracker/data/weight_storage.dart';
+import 'features/weight_tracker/presentation/weight_tracker_page.dart';
+import 'features/tdee_calculator/presentation/tdee_calculator_screen.dart';
+import 'features/insights/presentation/insights_and_backup_modal.dart';
 
 const String _googleAiApiKey = String.fromEnvironment('GOOGLE_AI_API_KEY');
 const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
@@ -42,13 +49,22 @@ class MacroTrackerApp extends StatefulWidget {
     super.key,
     ApiKeyStorage? apiKeyStorage,
     CalorieStorage? calorieStorage,
+    WeightStorage? weightStorage,
+    this.calorieParser,
     this.nutritionLabelImageSource,
+    this.initialTabIndex = 0,
+    this.showOnboarding,
   })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
-        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage();
+        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage(),
+        weightStorage = weightStorage ?? const PreferencesWeightStorage();
 
   final ApiKeyStorage apiKeyStorage;
   final CalorieStorage calorieStorage;
+  final WeightStorage weightStorage;
+  final CalorieParser? calorieParser;
   final NutritionLabelImageSource? nutritionLabelImageSource;
+  final int initialTabIndex;
+  final bool? showOnboarding;
 
   @override
   State<MacroTrackerApp> createState() => _MacroTrackerAppState();
@@ -56,6 +72,7 @@ class MacroTrackerApp extends StatefulWidget {
 
 class _MacroTrackerAppState extends State<MacroTrackerApp> {
   bool _isDarkMode = true;
+  bool _hasCompletedOnboarding = true;
 
   @override
   void initState() {
@@ -66,9 +83,12 @@ class _MacroTrackerAppState extends State<MacroTrackerApp> {
   Future<void> _loadInitialSettings() async {
     try {
       final UserSettings settings = await widget.calorieStorage.loadSettings();
-      if (mounted && settings.isDarkMode != _isDarkMode) {
+      if (mounted) {
         setState(() {
           _isDarkMode = settings.isDarkMode;
+          _hasCompletedOnboarding = widget.showOnboarding != null
+              ? !widget.showOnboarding!
+              : settings.hasCompletedOnboarding;
         });
       }
     } catch (_) {
@@ -90,17 +110,138 @@ class _MacroTrackerAppState extends State<MacroTrackerApp> {
 
   @override
   Widget build(BuildContext context) {
+    final bool showOnboardingScreen = widget.showOnboarding ?? !_hasCompletedOnboarding;
+
     return MaterialApp(
       title: 'EZ Macro',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getTheme(isDarkMode: _isDarkMode),
-      home: CalorieHomePage(
-        onToggleTheme: _toggleThemeMode,
-        isDarkMode: _isDarkMode,
+      home: showOnboardingScreen
+          ? TdeeCalculatorScreen(
+              calorieStorage: widget.calorieStorage,
+              weightStorage: widget.weightStorage,
+              isDarkMode: _isDarkMode,
+              onComplete: () {
+                setState(() {
+                  _hasCompletedOnboarding = true;
+                });
+              },
+            )
+          : MainNavigationScreen(
+              onToggleTheme: _toggleThemeMode,
+              isDarkMode: _isDarkMode,
+              apiKeyStorage: widget.apiKeyStorage,
+              calorieStorage: widget.calorieStorage,
+              weightStorage: widget.weightStorage,
+              calorieParser: widget.calorieParser,
+              nutritionLabelImageSource: widget.nutritionLabelImageSource,
+              initialIndex: widget.initialTabIndex,
+            ),
+    );
+  }
+}
+
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({
+    super.key,
+    required this.onToggleTheme,
+    required this.isDarkMode,
+    required this.apiKeyStorage,
+    required this.calorieStorage,
+    required this.weightStorage,
+    this.calorieParser,
+    this.nutritionLabelImageSource,
+    this.initialIndex = 0,
+  });
+
+  final VoidCallback onToggleTheme;
+  final bool isDarkMode;
+  final ApiKeyStorage apiKeyStorage;
+  final CalorieStorage calorieStorage;
+  final WeightStorage weightStorage;
+  final CalorieParser? calorieParser;
+  final NutritionLabelImageSource? nutritionLabelImageSource;
+  final int initialIndex;
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = widget.isDarkMode;
+
+    final Widget navBar = Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkBackgroundGrad2 : AppColors.lightBackgroundGrad2,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            width: 1,
+          ),
+        ),
+      ),
+      child: NavigationBar(
+        key: const Key('mainBottomNavigationBar'),
+        selectedIndex: _currentIndex,
+        backgroundColor: Colors.transparent,
+        indicatorColor: AppColors.primary.withValues(alpha: 0.2),
+        surfaceTintColor: Colors.transparent,
+        height: 64,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (int index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        destinations: const <NavigationDestination>[
+          NavigationDestination(
+            key: Key('navDestinationCalories'),
+            icon: Icon(Icons.local_fire_department_outlined),
+            selectedIcon: Icon(Icons.local_fire_department_rounded, color: AppColors.primaryLight),
+            label: 'Calories',
+          ),
+          NavigationDestination(
+            key: Key('navDestinationWeight'),
+            icon: Icon(Icons.monitor_weight_outlined),
+            selectedIcon: Icon(Icons.monitor_weight_rounded, color: AppColors.primaryLight),
+            label: 'Weight',
+          ),
+        ],
+      ),
+    );
+
+    final List<Widget> pages = <Widget>[
+      CalorieHomePage(
+        onToggleTheme: widget.onToggleTheme,
+        isDarkMode: widget.isDarkMode,
         apiKeyStorage: widget.apiKeyStorage,
         calorieStorage: widget.calorieStorage,
+        weightStorage: widget.weightStorage,
+        calorieParser: widget.calorieParser,
         nutritionLabelImageSource: widget.nutritionLabelImageSource,
+        bottomNavigationBar: navBar,
       ),
+      WeightTrackerPage(
+        onToggleTheme: widget.onToggleTheme,
+        isDarkMode: widget.isDarkMode,
+        weightStorage: widget.weightStorage,
+        bottomNavigationBar: navBar,
+      ),
+    ];
+
+    return IndexedStack(
+      index: _currentIndex,
+      children: pages,
     );
   }
 }
@@ -112,15 +253,22 @@ class CalorieHomePage extends StatefulWidget {
     required this.isDarkMode,
     ApiKeyStorage? apiKeyStorage,
     CalorieStorage? calorieStorage,
+    WeightStorage? weightStorage,
+    this.calorieParser,
     this.nutritionLabelImageSource,
+    this.bottomNavigationBar,
   })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
-        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage();
+        calorieStorage = calorieStorage ?? const PreferencesCalorieStorage(),
+        weightStorage = weightStorage ?? const PreferencesWeightStorage();
 
   final VoidCallback onToggleTheme;
   final bool isDarkMode;
   final ApiKeyStorage apiKeyStorage;
   final CalorieStorage calorieStorage;
+  final WeightStorage weightStorage;
+  final CalorieParser? calorieParser;
   final NutritionLabelImageSource? nutritionLabelImageSource;
+  final Widget? bottomNavigationBar;
 
   @override
   State<CalorieHomePage> createState() => _CalorieHomePageState();
@@ -134,6 +282,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   final TextEditingController _nlInputController = TextEditingController();
   bool _isParsing = false;
   bool _lastUsedFallback = false;
+  String? _lastParseSource;
   bool _showSpreadDetails = false;
   ParseResult? _lastParse;
   List<SavedFood> _savedFoods = <SavedFood>[];
@@ -224,6 +373,8 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     int fiberG = 0,
     int addedSugarG = 0,
     int sodiumMg = 0,
+    double portionSize = 1.0,
+    String portionUnit = 'serving',
     String? rangeText,
     String? sourceLabel,
     double? spreadPercent,
@@ -240,6 +391,8 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         fiberG: fiberG,
         addedSugarG: addedSugarG,
         sodiumMg: sodiumMg,
+        portionSize: portionSize,
+        portionUnit: portionUnit,
         rangeText: rangeText,
         sourceLabel: sourceLabel,
         spreadPercent: spreadPercent,
@@ -261,7 +414,21 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     if (index < 0 || index >= _trackerState.filteredEntries.length) return;
     final FoodLogEntry target = _trackerState.filteredEntries[index];
 
-    final dynamic result = await FoodEntryModal.showEdit(context, target);
+    final dynamic result = await FoodEntryModal.showEdit(
+      context,
+      target,
+      savedFoods: _savedFoods,
+      onSaveFood: _saveFoodForFutureUse,
+      onDeleteSavedFood: _deleteSavedFood,
+      nutritionLabelImageSource: widget.nutritionLabelImageSource,
+      hasConfiguredApiKey: _hasConfiguredApiKey,
+      onParseNutritionLabel: (
+        NutritionLabelImage image, {
+        String? hint,
+      }) {
+        return _calorieParser.parseNutritionLabel(image, hint: hint);
+      },
+    );
     if (result == null || !mounted) return;
 
     if (result == 'delete') {
@@ -312,6 +479,8 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         fiberG: result.fiberG,
         addedSugarG: result.addedSugarG,
         sodiumMg: result.sodiumMg,
+        portionSize: result.portionSize,
+        portionUnit: result.portionUnit,
         sourceLabel: result.sourceLabel ?? 'Manual',
         mealType: result.mealType,
       );
@@ -356,6 +525,9 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   }
 
   CalorieParser _buildParser() {
+    if (widget.calorieParser != null) {
+      return widget.calorieParser!;
+    }
     final String apiKey = _resolveApiKey();
     if (apiKey.isNotEmpty) {
       return GoogleAiCalorieParser(
@@ -415,22 +587,61 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       _isParsing = true;
     });
 
-    final ParseResult? primaryResult = await _calorieParser.parse(rawInput);
-    ParseResult? result = primaryResult;
+    // 1. Check local saved foods first to avoid calling LLM
+    final ParseResult? savedMatch =
+        SavedFoodMatcher.findMatch(rawInput, _savedFoods);
+
+    ParseResult? result;
     bool usedFallback = false;
-    if (result == null) {
-      result = await _fallbackParser.parse(rawInput);
-      usedFallback = result != null;
+    bool fromSaved = false;
+
+    if (savedMatch != null) {
+      result = savedMatch;
+      fromSaved = true;
+    } else {
+      final ParseResult? primaryResult = await _calorieParser.parse(rawInput);
+      result = primaryResult;
+      if (result == null) {
+        result = await _fallbackParser.parse(rawInput);
+        usedFallback = result != null;
+      }
     }
 
     if (!mounted) {
       return;
     }
 
+    // 2. Autosave item if confidence is >= 90% (0.90) and was not already matched from saved foods
+    if (result != null && !fromSaved && result.confidence >= 0.90) {
+      final SavedFood autoSavedFood = SavedFood(
+        name: result.mealLabel,
+        calories: result.calories,
+        proteinG: result.proteinG,
+        carbsG: result.carbsG,
+        fatG: result.fatG,
+        saturatedFatG: result.saturatedFatG,
+        fiberG: result.fiberG,
+        addedSugarG: result.addedSugarG,
+        sodiumMg: result.sodiumMg,
+        portionSize: result.portionSize,
+        portionUnit: result.portionUnit,
+      );
+      await _saveFoodForFutureUse(autoSavedFood);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final String sourceLabel = fromSaved
+        ? 'Saved'
+        : (usedFallback ? 'Local' : 'AI');
+
     setState(() {
       _isParsing = false;
       _lastParse = result;
       _lastUsedFallback = usedFallback;
+      _lastParseSource = sourceLabel;
     });
 
     if (usedFallback) {
@@ -457,7 +668,6 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         result.uncertaintyPercent(isFallback: usedFallback);
     final int low = result.caloriesLowerBound(uncertainty);
     final int high = result.caloriesUpperBound(uncertainty);
-    final String sourceLabel = usedFallback ? 'Local' : 'AI';
 
     _addCalories(
       result.calories,
@@ -469,6 +679,8 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       fiberG: result.fiberG,
       addedSugarG: result.addedSugarG,
       sodiumMg: result.sodiumMg,
+      portionSize: result.portionSize,
+      portionUnit: result.portionUnit,
       rangeText: '$low-$high kcal',
       sourceLabel: sourceLabel,
       spreadPercent: uncertainty,
@@ -496,6 +708,79 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     );
   }
 
+  Future<void> _handleSelectSavedFood(SavedFood food) async {
+    _onSelectSuggestion(food.name);
+    final FoodLogEntry? result = await StoredFoodPortionModal.show(
+      context,
+      food: food,
+      defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+      onOpenFullEdit: () async {
+        Navigator.of(context).pop();
+        final FoodLogEntry? manualResult = await FoodEntryModal.showAdd(
+          context,
+          defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+          savedFoods: _savedFoods,
+          onSaveFood: _saveFoodForFutureUse,
+          onDeleteSavedFood: _deleteSavedFood,
+          nutritionLabelImageSource: widget.nutritionLabelImageSource,
+          hasConfiguredApiKey: _hasConfiguredApiKey,
+          onParseNutritionLabel: (
+            NutritionLabelImage image, {
+            String? hint,
+          }) {
+            return _calorieParser.parseNutritionLabel(image, hint: hint);
+          },
+        );
+        if (manualResult != null && mounted) {
+          _addCalories(
+            manualResult.calories,
+            manualResult.mealLabel,
+            proteinG: manualResult.proteinG,
+            carbsG: manualResult.carbsG,
+            fatG: manualResult.fatG,
+            saturatedFatG: manualResult.saturatedFatG,
+            fiberG: manualResult.fiberG,
+            addedSugarG: manualResult.addedSugarG,
+            sodiumMg: manualResult.sodiumMg,
+            portionSize: manualResult.portionSize,
+            portionUnit: manualResult.portionUnit,
+            sourceLabel: manualResult.sourceLabel ?? 'Manual',
+            mealType: manualResult.mealType,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Logged ${manualResult.mealLabel} (${manualResult.calories} kcal).'),
+            ),
+          );
+        }
+      },
+    );
+
+    if (result != null && mounted) {
+      _addCalories(
+        result.calories,
+        result.mealLabel,
+        proteinG: result.proteinG,
+        carbsG: result.carbsG,
+        fatG: result.fatG,
+        saturatedFatG: result.saturatedFatG,
+        fiberG: result.fiberG,
+        addedSugarG: result.addedSugarG,
+        sodiumMg: result.sodiumMg,
+        portionSize: result.portionSize,
+        portionUnit: result.portionUnit,
+        sourceLabel: result.sourceLabel ?? 'Saved',
+        mealType: result.mealType,
+      );
+      _nlInputController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logged ${result.mealLabel} (${result.calories} kcal).'),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _nlInputController.dispose();
@@ -511,6 +796,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      bottomNavigationBar: widget.bottomNavigationBar,
       appBar: AppBar(
         title: Row(
           children: <Widget>[
@@ -553,6 +839,33 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                     : (isDark ? Colors.white70 : Colors.black54),
               ),
               tooltip: 'Configure Google AI API Key',
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              key: const Key('openInsightsModalButton'),
+              onPressed: () {
+                InsightsAndBackupModal.show(
+                  context,
+                  calorieStorage: widget.calorieStorage,
+                  weightStorage: widget.weightStorage,
+                  onDataRestored: () {
+                    _initTrackerData();
+                    _loadSavedFoods();
+                  },
+                );
+              },
+              icon: const Icon(
+                Icons.auto_graph_rounded,
+                size: 18,
+                color: AppColors.primaryLight,
+              ),
+              tooltip: 'Weekly Insights & Backup',
             ),
           ),
           Container(
@@ -603,7 +916,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
         ),
         child: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             children: <Widget>[
               // Top Date Navigator & Streak Row
               DateNavigationBar(
@@ -668,12 +981,15 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                 hasConfiguredApiKey: _hasConfiguredApiKey,
                 lastParse: _lastParse,
                 lastUsedFallback: _lastUsedFallback,
+                lastParseSource: _lastParseSource,
                 showSpreadDetails: _showSpreadDetails,
                 onParse: _parseAndLogMeal,
                 onSelectSuggestion: _onSelectSuggestion,
                 onConfigureApiKey: _openApiKeyModal,
                 onQuickAdd: _openQuickAddModal,
                 selectedMealType: _trackerState.selectedMealFilter,
+                savedFoods: _savedFoods,
+                onSelectSavedFood: _handleSelectSavedFood,
               ),
 
               const SizedBox(height: 14),

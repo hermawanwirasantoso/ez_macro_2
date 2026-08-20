@@ -7,16 +7,38 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:ez_macro_2/features/calorie_tracker/data/api_key_storage.dart';
+import 'package:ez_macro_2/features/calorie_tracker/data/calorie_storage.dart';
+import 'package:ez_macro_2/features/weight_tracker/data/weight_storage.dart';
 import 'package:ez_macro_2/main.dart';
 
-Future<void> _scrollToInput(WidgetTester tester) async {
+Future<void> _scrollIntoView(WidgetTester tester, Finder finder, {double delta = 50}) async {
+  if (tester.any(finder)) {
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    return;
+  }
   await tester.scrollUntilVisible(
-    find.byKey(const Key('nlInputField')),
-    250,
+    finder,
+    delta,
     scrollable: find.byType(Scrollable).first,
   );
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollToVisible(WidgetTester tester, Finder finder, {double delta = 50}) async {
+  await _scrollIntoView(tester, finder, delta: delta);
+}
+
+Future<void> _scrollToInput(WidgetTester tester) async {
+  await _scrollIntoView(tester, find.byKey(const Key('nlInputField')));
+}
+
+Future<void> _scrollToHero(WidgetTester tester) async {
+  await _scrollIntoView(tester, find.byKey(const Key('caloriesConsumedText')), delta: -50);
 }
 
 Future<void> _tapSaveEntry(WidgetTester tester) async {
@@ -27,6 +49,14 @@ Future<void> _tapSaveEntry(WidgetTester tester) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await const PreferencesCalorieStorage().clearAll();
+    await const PreferencesWeightStorage().clearAll();
+  });
+
   testWidgets('Calorie tracker summary renders initial values', (WidgetTester tester) async {
     await tester.pumpWidget(const MacroTrackerApp());
 
@@ -57,11 +87,14 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
+    await _scrollToHero(tester);
     expect(find.text('200 / 2200 kcal'), findsOneWidget);
     expect(find.text('2000 kcal remaining'), findsOneWidget);
     expect(find.text('Protein  15/160 g'), findsOneWidget);
     expect(find.text('Carbs  20/255 g'), findsOneWidget);
     expect(find.text('Fat  7/60 g'), findsOneWidget);
+
+    await _scrollIntoView(tester, find.byKey(const Key('parseResultText')));
     expect(find.byKey(const Key('parseResultText')), findsOneWidget);
     expect(find.byKey(const Key('spreadText')), findsNothing);
   });
@@ -77,6 +110,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
+    await _scrollToHero(tester);
     expect(find.text('280 / 2200 kcal'), findsOneWidget);
     expect(find.text('1920 kcal remaining'), findsOneWidget);
     expect(find.text('Protein  5/160 g'), findsOneWidget);
@@ -96,6 +130,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
+    await _scrollToHero(tester);
     expect(find.text('330 / 2200 kcal'), findsOneWidget);
     expect(find.text('1870 kcal remaining'), findsOneWidget);
     expect(find.text('Protein  62/160 g'), findsOneWidget);
@@ -154,22 +189,16 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
+    await _scrollToHero(tester);
     expect(find.text('200 / 2200 kcal'), findsOneWidget);
     expect(find.text('Protein  15/160 g'), findsOneWidget);
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('removeEntryButton_0')),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.byKey(const Key('removeEntryButton_0')));
+    final Finder removeBtn = find.byKey(const Key('removeEntryButton_0'));
+    await _scrollIntoView(tester, removeBtn);
+    await tester.tap(removeBtn);
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('caloriesConsumedText')),
-      -200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await _scrollToHero(tester);
 
     expect(find.text('0 / 2200 kcal'), findsOneWidget);
     expect(find.text('Protein  0/160 g'), findsOneWidget);
@@ -193,8 +222,8 @@ void main() {
   testWidgets('Suggestion chips populate input field', (WidgetTester tester) async {
     await tester.pumpWidget(const MacroTrackerApp());
 
-    await _scrollToInput(tester);
     final Finder riceChip = find.widgetWithText(ActionChip, 'a bowl of rice');
+    await _scrollToVisible(tester, riceChip);
     expect(riceChip, findsOneWidget);
 
     await tester.tap(riceChip);
@@ -253,10 +282,9 @@ void main() {
     await tester.pumpWidget(MacroTrackerApp(apiKeyStorage: storage));
     await tester.pumpAndSettle();
 
-    await _scrollToInput(tester);
-    expect(find.text('AI Ready'), findsOneWidget);
-
     final Finder configureBadge = find.byKey(const Key('configureApiKeyButton'));
+    await _scrollToVisible(tester, configureBadge);
+    expect(find.text('AI Ready'), findsOneWidget);
     expect(configureBadge, findsOneWidget);
 
     await tester.tap(configureBadge);
@@ -285,8 +313,9 @@ void main() {
     await tester.pumpWidget(const MacroTrackerApp());
     await tester.pumpAndSettle();
 
-    await _scrollToInput(tester);
-    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    await _scrollToVisible(tester, quickAddButton);
+    await tester.tap(quickAddButton);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('scanNutritionLabelButton')), findsOneWidget);
@@ -297,8 +326,8 @@ void main() {
     await tester.pumpWidget(const MacroTrackerApp());
     await tester.pumpAndSettle();
 
-    await _scrollToInput(tester);
     final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    await _scrollToVisible(tester, quickAddButton);
     expect(quickAddButton, findsOneWidget);
 
     await tester.tap(quickAddButton);
@@ -314,11 +343,15 @@ void main() {
 
     await _tapSaveEntry(tester);
 
+    await _scrollToHero(tester);
     expect(find.text('250 / 2200 kcal'), findsOneWidget);
     expect(find.text('Protein  30/160 g'), findsOneWidget);
     expect(find.text('Carbs  10/255 g'), findsOneWidget);
     expect(find.text('Fat  3/60 g'), findsOneWidget);
-    expect(find.text('Protein Shake - 250 kcal Manual'), findsOneWidget);
+
+    final Finder loggedEntryFinder = find.text('Protein Shake - 250 kcal Manual');
+    await _scrollIntoView(tester, loggedEntryFinder);
+    expect(loggedEntryFinder, findsOneWidget);
   });
 
   testWidgets('User can edit an existing food entry and update values', (WidgetTester tester) async {
@@ -326,17 +359,20 @@ void main() {
     await tester.pumpAndSettle();
 
     // Quick add first item
-    await _scrollToInput(tester);
-    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    await _scrollToVisible(tester, quickAddButton);
+    await tester.tap(quickAddButton);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('mealLabelField')), 'Apple');
     await tester.enterText(find.byKey(const Key('caloriesField')), '80');
     await _tapSaveEntry(tester);
 
+    await _scrollToHero(tester);
     expect(find.text('80 / 2200 kcal'), findsOneWidget);
 
     // Edit the entry
     final Finder editButton = find.byKey(const Key('editEntryButton_0'));
+    await _scrollToVisible(tester, editButton);
     expect(editButton, findsOneWidget);
 
     await tester.tap(editButton);
@@ -347,8 +383,12 @@ void main() {
     await tester.enterText(find.byKey(const Key('caloriesField')), '120');
     await _tapSaveEntry(tester);
 
+    await _scrollToHero(tester);
     expect(find.text('120 / 2200 kcal'), findsOneWidget);
-    expect(find.text('Large Honeycrisp Apple - 120 kcal Manual'), findsOneWidget);
+
+    final Finder updatedEntryFinder = find.text('Large Honeycrisp Apple - 120 kcal Manual');
+    await _scrollIntoView(tester, updatedEntryFinder);
+    expect(updatedEntryFinder, findsOneWidget);
   });
 
   testWidgets('User can filter entries by meal category tabs', (WidgetTester tester) async {
@@ -356,8 +396,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add breakfast item
-    await _scrollToInput(tester);
-    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    await _scrollToVisible(tester, quickAddButton);
+    await tester.tap(quickAddButton);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('mealTypeChip_breakfast')));
     await tester.enterText(find.byKey(const Key('mealLabelField')), 'Oatmeal');
@@ -365,39 +406,39 @@ void main() {
     await _tapSaveEntry(tester);
 
     // Add lunch item
-    await _scrollToInput(tester);
-    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    await _scrollToVisible(tester, quickAddButton);
+    await tester.tap(quickAddButton);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('mealTypeChip_lunch')));
     await tester.enterText(find.byKey(const Key('mealLabelField')), 'Chicken Bowl');
     await tester.enterText(find.byKey(const Key('caloriesField')), '500');
     await _tapSaveEntry(tester);
 
+    await _scrollToHero(tester);
     expect(find.text('800 / 2200 kcal'), findsOneWidget);
 
     // Filter to Lunch only
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('mealFilter_lunch')),
-      100,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.byKey(const Key('mealFilter_lunch')));
+    final Finder lunchFilter = find.byKey(const Key('mealFilter_lunch'));
+    await _scrollToVisible(tester, lunchFilter);
+    await tester.tap(lunchFilter);
     await tester.pumpAndSettle();
 
     expect(find.text('Chicken Bowl - 500 kcal Manual'), findsOneWidget);
     expect(find.text('Oatmeal - 300 kcal Manual'), findsNothing);
 
     // Filter back to All
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('mealFilter_all')),
-      -50,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.byKey(const Key('mealFilter_all')));
+    final Finder allFilter = find.byKey(const Key('mealFilter_all'));
+    await _scrollIntoView(tester, allFilter);
+    await tester.tap(allFilter);
     await tester.pumpAndSettle();
 
-    expect(find.text('Chicken Bowl - 500 kcal Manual'), findsOneWidget);
-    expect(find.text('Oatmeal - 300 kcal Manual'), findsOneWidget);
+    final Finder chickenEntry = find.text('Chicken Bowl - 500 kcal Manual');
+    await _scrollIntoView(tester, chickenEntry);
+    expect(chickenEntry, findsOneWidget);
+
+    final Finder oatmealEntry = find.text('Oatmeal - 300 kcal Manual');
+    await _scrollIntoView(tester, oatmealEntry);
+    expect(oatmealEntry, findsOneWidget);
   });
 
   testWidgets('User can navigate calendar dates and jump back to today', (WidgetTester tester) async {
@@ -424,17 +465,20 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add an entry
-    await _scrollToInput(tester);
-    await tester.tap(find.byKey(const Key('openQuickAddButton')));
+    final Finder quickAddButton = find.byKey(const Key('openQuickAddButton'));
+    await _scrollToVisible(tester, quickAddButton);
+    await tester.tap(quickAddButton);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('mealLabelField')), 'Snack Bar');
     await tester.enterText(find.byKey(const Key('caloriesField')), '150');
     await _tapSaveEntry(tester);
 
+    await _scrollToHero(tester);
     expect(find.text('150 / 2200 kcal'), findsOneWidget);
 
     // Tap clear day button
     final Finder clearButton = find.byKey(const Key('clearAllEntriesButton'));
+    await _scrollToVisible(tester, clearButton);
     expect(clearButton, findsOneWidget);
 
     await tester.tap(clearButton);
@@ -446,6 +490,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Clear All'));
     await tester.pumpAndSettle();
 
+    await _scrollToHero(tester);
     expect(find.text('0 / 2200 kcal'), findsOneWidget);
   });
 }

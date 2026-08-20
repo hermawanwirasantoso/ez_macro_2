@@ -173,12 +173,12 @@ class DateNavigationBar extends StatelessWidget {
             shape: BoxShape.circle,
             color: isDark
                 ? Colors.white.withValues(alpha: 0.06)
-                : Colors.white,
+                : AppColors.lightCard,
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: isDark
                     ? Colors.black.withValues(alpha: 0.2)
-                    : Colors.black.withValues(alpha: 0.05),
+                    : const Color(0xFF5A4D3A).withValues(alpha: 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 3),
               ),

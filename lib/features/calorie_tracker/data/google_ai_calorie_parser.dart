@@ -23,10 +23,10 @@ class GoogleAiCalorieParser implements CalorieParser {
   final http.Client? client;
 
   static const String _textSystemInstruction =
-      'Extract meal label, calories, macronutrients, and complete nutrition details (saturated fat, fiber, added sugar, sodium) from user text. Important: if input includes grams (like "200g chicken breast"), grams are portion size, not calories. Infer calories and detailed nutrition from food type and portion. Return JSON only: {"mealLabel":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}.';
+      'Extract meal label, portion size, portion unit, calories, macronutrients, and complete nutrition details (saturated fat, fiber, added sugar, sodium) from user text. If input includes portion or weight (e.g. "200g chicken breast", "1.5 cup rice", "2 eggs"), extract the portion size (number) and unit (string, e.g. "g", "cup", "piece", "oz", "serving"), and infer calories and nutrition for that portion. Return JSON only: {"mealLabel":"string","portionSize":number,"portionUnit":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}. Default portionSize to 1 and portionUnit to "serving" if not specified.';
 
   static const String _labelSystemInstruction =
-      'Read the nutrition facts label in the image. Extract the product or food name, calories, protein, carbs, fat, saturated fat, dietary fiber, added sugar, and sodium for one serving shown on the label. Prefer per-serving values, not per container, unless the label only shows per container. If a product name is not visible, use a short generic name. Return JSON only: {"mealLabel":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}.';
+      'Read the nutrition facts label in the image. Extract the product or food name, serving/portion size (number), portion unit (e.g. "g", "ml", "pieces", "oz", "cup", "serving"), calories, protein, carbs, fat, saturated fat, dietary fiber, added sugar, and sodium for one serving shown on the label. Return JSON only: {"mealLabel":"string","portionSize":number,"portionUnit":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}. Default portionSize to 1 and portionUnit to "serving" if not specified.';
 
   @override
   Future<ParseResult?> parse(String input) async {
@@ -361,6 +361,37 @@ class GoogleAiCalorieParser implements CalorieParser {
         .clamp(0, 20000)
         .toInt();
 
+    final double portionSize = (_toDoubleByKeys(extracted, <String>[
+              'portionSize',
+              'portion_size',
+              'servingSize',
+              'serving_size',
+              'amount',
+              'quantity',
+              'portion',
+              'serving',
+              'serving_size_g',
+              'servingSizeG',
+            ]) ??
+            1.0)
+        .clamp(0.01, 99999.0);
+
+    final String rawPortionUnit = (_toStringByKeys(extracted, <String>[
+              'portionUnit',
+              'portion_unit',
+              'servingUnit',
+              'serving_unit',
+              'unit',
+              'serving_size_unit',
+              'portion_size_unit',
+              'units',
+              'serving_unit_name',
+            ]) ??
+            'serving')
+        .trim();
+    final String portionUnit =
+        rawPortionUnit.isEmpty ? 'serving' : rawPortionUnit;
+
     final double confidence =
         _toDoubleByKeys(extracted, <String>[
               'confidence',
@@ -381,6 +412,8 @@ class GoogleAiCalorieParser implements CalorieParser {
       fiberG: fiberG,
       addedSugarG: addedSugarG,
       sodiumMg: sodiumMg,
+      portionSize: portionSize,
+      portionUnit: portionUnit,
     );
   }
 
