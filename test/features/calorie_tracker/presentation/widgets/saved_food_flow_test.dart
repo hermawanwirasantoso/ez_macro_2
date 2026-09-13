@@ -65,6 +65,9 @@ void main() {
     await tester.tap(quickAddBtn);
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('savedFoodsExpansionTile')));
+    await tester.pumpAndSettle();
+
     final Finder savedFoodTile = find.byKey(
       Key('savedFoodTile_${savedFoods.single.id}'),
     );
@@ -117,6 +120,9 @@ void main() {
     await tester.tap(quickAddBtn);
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('savedFoodsExpansionTile')));
+    await tester.pumpAndSettle();
+
     // Tap the saved food tile
     await tester.tap(find.byKey(const Key('savedFoodTile_saved_protein_bar')));
     await tester.pumpAndSettle();
@@ -126,6 +132,8 @@ void main() {
     expect(find.text('Base: 1 bar'), findsOneWidget);
 
     // Choose 2x portion (400 kcal, 40P, 30C, 12F)
+    await tester.ensureVisible(find.byKey(const Key('portionChip_2')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('portionChip_2')));
     await tester.pumpAndSettle();
 
@@ -151,6 +159,106 @@ void main() {
     expect(find.text('Fat  12/60 g'), findsOneWidget);
   });
 
+  testWidgets(
+      'scaling a saved food and saving for later does not overwrite the catalog serving',
+      (WidgetTester tester) async {
+    final SavedFood savedFood = SavedFood(
+      id: 'saved_chicken',
+      name: 'Chicken Breast',
+      calories: 165,
+      proteinG: 31,
+      carbsG: 0,
+      fatG: 4,
+      portionSize: 100.0,
+      portionUnit: 'g',
+    );
+    final CalorieStorage storage = CalorieStorage.inMemory(
+      initialSavedFoods: <SavedFood>[savedFood],
+    );
+
+    await tester.pumpWidget(MacroTrackerApp(calorieStorage: storage));
+    await tester.pumpAndSettle();
+
+    final Finder quickAddBtn = find.byKey(const Key('openQuickAddButton'));
+    await _scrollIntoView(tester, quickAddBtn);
+    await tester.tap(quickAddBtn);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('savedFoodsExpansionTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('savedFoodTile_saved_chicken')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('portionInputField')), '200');
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('saveForFutureUseCheckbox')));
+    await tester.tap(find.byKey(const Key('saveForFutureUseCheckbox')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('saveEntryButton')));
+    await tester.tap(find.byKey(const Key('saveEntryButton')));
+    await tester.pumpAndSettle();
+
+    await _scrollToTop(tester);
+    expect(find.text('330 / 2200 kcal'), findsOneWidget);
+
+    final List<SavedFood> savedFoods = await storage.loadSavedFoods();
+    expect(savedFoods, hasLength(1));
+    expect(savedFoods.single.id, 'saved_chicken');
+    expect(savedFoods.single.calories, 165);
+    expect(savedFoods.single.proteinG, 31);
+    expect(savedFoods.single.portionSize, 100.0);
+    expect(savedFoods.single.portionUnit, 'g');
+  });
+
+  testWidgets(
+      'saving a new food does not replace a different saved food that shares the name',
+      (WidgetTester tester) async {
+    final SavedFood existing = SavedFood(
+      id: 'saved_chicken',
+      name: 'Chicken Breast',
+      calories: 165,
+      proteinG: 31,
+      carbsG: 0,
+      fatG: 4,
+      portionSize: 100.0,
+      portionUnit: 'g',
+    );
+    final CalorieStorage storage = CalorieStorage.inMemory(
+      initialSavedFoods: <SavedFood>[existing],
+    );
+
+    await tester.pumpWidget(MacroTrackerApp(calorieStorage: storage));
+    await tester.pumpAndSettle();
+
+    final Finder quickAddBtn = find.byKey(const Key('openQuickAddButton'));
+    await _scrollIntoView(tester, quickAddBtn);
+    await tester.tap(quickAddBtn);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('mealLabelField')), 'Chicken Breast');
+    await tester.enterText(find.byKey(const Key('caloriesField')), '500');
+    await tester.enterText(find.byKey(const Key('proteinField')), '40');
+    await tester.ensureVisible(find.byKey(const Key('saveForFutureUseCheckbox')));
+    await tester.tap(find.byKey(const Key('saveForFutureUseCheckbox')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('saveEntryButton')));
+    await tester.tap(find.byKey(const Key('saveEntryButton')));
+    await tester.pumpAndSettle();
+
+    final List<SavedFood> savedFoods = await storage.loadSavedFoods();
+    expect(savedFoods, hasLength(2));
+    final SavedFood original = savedFoods.firstWhere(
+      (SavedFood food) => food.id == 'saved_chicken',
+    );
+    expect(original.calories, 165);
+    expect(original.portionSize, 100.0);
+    expect(
+      savedFoods.any((SavedFood food) => food.calories == 500),
+      isTrue,
+    );
+  });
+
   testWidgets('user can remove a saved food from Quick Add',
       (WidgetTester tester) async {
     final SavedFood savedFood = SavedFood(
@@ -171,6 +279,9 @@ void main() {
     final Finder quickAddBtn = find.byKey(const Key('openQuickAddButton'));
     await _scrollIntoView(tester, quickAddBtn);
     await tester.tap(quickAddBtn);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('savedFoodsExpansionTile')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('deleteSavedFood_saved_to_remove')));
@@ -238,9 +349,12 @@ void main() {
     await _scrollIntoView(tester, portion300g);
     expect(portion300g, findsOneWidget);
 
-    // Check that custom food was saved
+    // Saved catalog keeps the original logged serving, not the 1.5x amount.
     final List<SavedFood> savedFoods = await storage.loadSavedFoods();
     expect(savedFoods, hasLength(1));
     expect(savedFoods.single.name, contains('chicken breast'));
+    expect(savedFoods.single.calories, 330);
+    expect(savedFoods.single.portionSize, 200.0);
+    expect(savedFoods.single.portionUnit, 'g');
   });
 }

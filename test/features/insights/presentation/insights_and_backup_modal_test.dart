@@ -5,8 +5,10 @@ import 'package:ez_macro_2/features/calorie_tracker/data/calorie_storage.dart';
 import 'package:ez_macro_2/features/calorie_tracker/domain/daily_log.dart';
 import 'package:ez_macro_2/features/calorie_tracker/domain/user_settings.dart';
 import 'package:ez_macro_2/features/insights/presentation/insights_and_backup_modal.dart';
+import 'package:ez_macro_2/features/recipes/data/recipe_storage.dart';
 import 'package:ez_macro_2/features/weight_tracker/data/weight_storage.dart';
 import 'package:ez_macro_2/features/weight_tracker/domain/weight_entry.dart';
+import 'package:ez_macro_2/features/weight_tracker/domain/weight_goal.dart';
 import 'package:ez_macro_2/features/weight_tracker/domain/weight_unit.dart';
 import 'package:ez_macro_2/main.dart';
 
@@ -124,6 +126,76 @@ void main() {
     expect(find.text('Weekly Achievements & Insights'), findsOneWidget);
   });
 
+  testWidgets('InsightsAndBackupModal Monthly tab shows 30-day metrics and projection',
+      (WidgetTester tester) async {
+    final CalorieStorage calorieStorage = CalorieStorage.inMemory(
+      initialSettings: const UserSettings(dailyGoal: 2200, targetProteinG: 150),
+    );
+    final InMemoryWeightStorage weightStorage = InMemoryWeightStorage(
+      initialGoal: const WeightGoal(
+        targetWeight: 75.0,
+        startingWeight: 80.0,
+        unit: WeightUnit.kg,
+      ),
+    );
+
+    final DateTime today = DateTime.now();
+    for (int i = 0; i < 25; i++) {
+      await calorieStorage.saveDayLog(
+        DailyLog(
+          dateString: DailyLog.formatDateKey(today.subtract(Duration(days: i))),
+          entries: <FoodLogEntry>[
+            FoodLogEntry(calories: 1900, mealLabel: 'Meal', proteinG: 160, carbsG: 180, fatG: 50),
+          ],
+        ),
+      );
+    }
+    for (int i = 0; i < 5; i++) {
+      await weightStorage.saveEntry(
+        WeightEntry(
+          id: 'w$i',
+          weight: 80.0 - (i * 0.5),
+          unit: WeightUnit.kg,
+          date: today.subtract(Duration(days: 28 - (i * 7))),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (BuildContext context) => ElevatedButton(
+              onPressed: () => InsightsAndBackupModal.show(
+                context,
+                calorieStorage: calorieStorage,
+                weightStorage: weightStorage,
+              ),
+              child: const Text('Open Insights'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open Insights'));
+    await tester.pumpAndSettle();
+
+    final Finder monthlyTab = find.byKey(const Key('monthlyInsightsTab'));
+    await tester.ensureVisible(monthlyTab);
+    await tester.pumpAndSettle();
+    await tester.tap(monthlyTab);
+    await tester.pumpAndSettle();
+
+    expect(find.text('30-DAY PERFORMANCE'), findsOneWidget);
+    expect(find.text('25/30 Days Logged'), findsOneWidget);
+    expect(find.byKey(const Key('monthlyAvgDailyCaloriesText')), findsOneWidget);
+    expect(find.byKey(const Key('monthlyNetCalorieDeltaText')), findsOneWidget);
+    expect(find.text('-0.5 kg/week'), findsOneWidget);
+    expect(find.textContaining('On track! Goal weight'), findsOneWidget);
+    expect(find.text('Monthly Macro Averages'), findsOneWidget);
+  });
+
   testWidgets('InsightsAndBackupModal switches to Data & Backup tab and exports data',
       (WidgetTester tester) async {
     String clipboardContent = '';
@@ -143,6 +215,7 @@ void main() {
 
     final CalorieStorage calorieStorage = CalorieStorage.inMemory();
     final InMemoryWeightStorage weightStorage = InMemoryWeightStorage();
+    final InMemoryRecipeStorage recipeStorage = InMemoryRecipeStorage();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -153,6 +226,7 @@ void main() {
                 context,
                 calorieStorage: calorieStorage,
                 weightStorage: weightStorage,
+                recipeStorage: recipeStorage,
               ),
               child: const Text('Open Insights'),
             ),
@@ -177,12 +251,12 @@ void main() {
 
     // Export JSON Backup
     await tester.tap(find.byKey(const Key('exportJsonBackupButton')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(clipboardContent, contains('"version": 1'));
 
     // Export Nutrition CSV
     await tester.tap(find.byKey(const Key('exportNutritionCsvButton')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(clipboardContent, startsWith('Date,Total Calories'));
   });
 
@@ -190,6 +264,7 @@ void main() {
       (WidgetTester tester) async {
     final CalorieStorage calorieStorage = CalorieStorage.inMemory();
     final InMemoryWeightStorage weightStorage = InMemoryWeightStorage();
+    final InMemoryRecipeStorage recipeStorage = InMemoryRecipeStorage();
     bool onRestoredCalled = false;
 
     await tester.pumpWidget(
@@ -201,6 +276,7 @@ void main() {
                 context,
                 calorieStorage: calorieStorage,
                 weightStorage: weightStorage,
+                recipeStorage: recipeStorage,
                 onDataRestored: () {
                   onRestoredCalled = true;
                 },
@@ -262,6 +338,7 @@ void main() {
       (WidgetTester tester) async {
     final CalorieStorage calorieStorage = CalorieStorage.inMemory();
     final InMemoryWeightStorage weightStorage = InMemoryWeightStorage();
+    final InMemoryRecipeStorage recipeStorage = InMemoryRecipeStorage();
 
     await calorieStorage.saveDayLog(
       DailyLog(
@@ -281,6 +358,7 @@ void main() {
                 context,
                 calorieStorage: calorieStorage,
                 weightStorage: weightStorage,
+                recipeStorage: recipeStorage,
               ),
               child: const Text('Open Insights'),
             ),

@@ -3,12 +3,14 @@ import '../../domain/daily_log.dart';
 import '../../domain/meal_type.dart';
 import '../theme/app_theme.dart';
 
-class RecentEntriesSection extends StatelessWidget {
+class RecentEntriesSection extends StatefulWidget {
   const RecentEntriesSection({
     super.key,
     required this.entries,
     required this.onRemoveEntry,
     this.onEditEntry,
+    this.onLogAgain,
+    this.onCopyDayToToday,
     this.onClearAll,
     this.selectedMealFilter,
   });
@@ -16,12 +18,35 @@ class RecentEntriesSection extends StatelessWidget {
   final List<FoodLogEntry> entries;
   final ValueChanged<int> onRemoveEntry;
   final ValueChanged<int>? onEditEntry;
+  final ValueChanged<int>? onLogAgain;
+  final VoidCallback? onCopyDayToToday;
   final VoidCallback? onClearAll;
   final MealType? selectedMealFilter;
 
   @override
+  State<RecentEntriesSection> createState() => _RecentEntriesSectionState();
+}
+
+class _RecentEntriesSectionState extends State<RecentEntriesSection> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final String query = _searchQuery.trim().toLowerCase();
+    final List<MapEntry<int, FoodLogEntry>> displayedEntries = widget.entries
+        .asMap()
+        .entries
+        .where((MapEntry<int, FoodLogEntry> e) =>
+            query.isEmpty || e.value.mealLabel.toLowerCase().contains(query))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -29,9 +54,9 @@ class RecentEntriesSection extends StatelessWidget {
         Row(
           children: <Widget>[
             Text(
-              selectedMealFilter == null
+              widget.selectedMealFilter == null
                   ? 'Recent Entries'
-                  : '${selectedMealFilter!.displayName} Entries',
+                  : '${widget.selectedMealFilter!.displayName} Entries',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -40,7 +65,7 @@ class RecentEntriesSection extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            if (entries.isNotEmpty)
+            if (widget.entries.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -48,7 +73,9 @@ class RecentEntriesSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${entries.length}',
+                  query.isEmpty
+                      ? '${widget.entries.length}'
+                      : '${displayedEntries.length}/${widget.entries.length}',
                   key: const Key('entriesCountBadge'),
                   style: const TextStyle(
                     fontSize: 12,
@@ -58,10 +85,30 @@ class RecentEntriesSection extends StatelessWidget {
                 ),
               ),
             const Spacer(),
-            if (entries.isNotEmpty && onClearAll != null)
+            if (widget.entries.isNotEmpty && widget.onCopyDayToToday != null)
+              TextButton.icon(
+                key: const Key('copyDayToTodayButton'),
+                onPressed: widget.onCopyDayToToday,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 0),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.copy_all_rounded, size: 16, color: AppColors.primary),
+                label: const Text(
+                  'Copy to Today',
+                  style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600),
+                ),
+              ),
+            if (widget.entries.isNotEmpty && widget.onClearAll != null)
               TextButton.icon(
                 key: const Key('clearAllEntriesButton'),
-                onPressed: onClearAll,
+                onPressed: widget.onClearAll,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 0),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 icon: const Icon(Icons.clear_all, size: 16, color: AppColors.fat),
                 label: const Text(
                   'Clear Day',
@@ -71,7 +118,61 @@ class RecentEntriesSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        if (entries.isEmpty)
+        if (widget.entries.length >= 3 || _searchQuery.isNotEmpty) ...<Widget>[
+          TextField(
+            key: const Key('searchEntriesInput'),
+            controller: _searchController,
+            onChanged: (String val) {
+              setState(() {
+                _searchQuery = val;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'Search logged meals...',
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              ),
+              prefixIcon: const Icon(Icons.search_rounded, size: 18),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      key: const Key('clearSearchEntriesButton'),
+                      icon: const Icon(Icons.clear_rounded, size: 16),
+                      onPressed: () {
+                        setState(() {
+                          _searchController.clear();
+                          _searchQuery = '';
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: AppColors.primary,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (widget.entries.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
@@ -98,9 +199,9 @@ class RecentEntriesSection extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  selectedMealFilter == null
+                  widget.selectedMealFilter == null
                       ? 'No meals logged yet. Try: "100g chicken breast with broccoli"'
-                      : 'No ${selectedMealFilter!.displayName.toLowerCase()} meals logged yet.',
+                      : 'No ${widget.selectedMealFilter!.displayName.toLowerCase()} meals logged yet.',
                   style: TextStyle(
                     fontSize: 14,
                     color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
@@ -110,14 +211,37 @@ class RecentEntriesSection extends StatelessWidget {
               ],
             ),
           )
+        else if (displayedEntries.isEmpty)
+          Container(
+            key: const Key('noMatchingRecentEntriesBox'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard : AppColors.lightCard,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'No entries match "$_searchQuery"',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                ),
+              ),
+            ),
+          )
         else
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: entries.length,
+            itemCount: displayedEntries.length,
             separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10),
             itemBuilder: (BuildContext context, int index) {
-              final FoodLogEntry entry = entries[index];
+              final int originalIndex = displayedEntries[index].key;
+              final FoodLogEntry entry = displayedEntries[index].value;
               final Color mealColor = entry.mealType.color;
 
               return Container(
@@ -141,7 +265,7 @@ class RecentEntriesSection extends StatelessWidget {
                   color: Colors.transparent,
                   child: ListTile(
                     dense: true,
-                    onTap: onEditEntry != null ? () => onEditEntry!(index) : null,
+                    onTap: widget.onEditEntry != null ? () => widget.onEditEntry!(originalIndex) : null,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     leading: Container(
                       padding: const EdgeInsets.all(8),
@@ -215,16 +339,23 @@ class RecentEntriesSection extends StatelessWidget {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        if (onEditEntry != null)
+                        if (widget.onLogAgain != null)
                           IconButton(
-                            key: Key('editEntryButton_$index'),
-                            onPressed: () => onEditEntry!(index),
+                            key: Key('logAgainEntryButton_$originalIndex'),
+                            onPressed: () => widget.onLogAgain!(originalIndex),
+                            icon: const Icon(Icons.replay_rounded, size: 18, color: AppColors.success),
+                            tooltip: 'Log again',
+                          ),
+                        if (widget.onEditEntry != null)
+                          IconButton(
+                            key: Key('editEntryButton_$originalIndex'),
+                            onPressed: () => widget.onEditEntry!(originalIndex),
                             icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.primary),
                             tooltip: 'Edit entry',
                           ),
                         IconButton(
-                          key: Key('removeEntryButton_$index'),
-                          onPressed: () => onRemoveEntry(index),
+                          key: Key('removeEntryButton_$originalIndex'),
+                          onPressed: () => widget.onRemoveEntry(originalIndex),
                           icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.fat),
                           tooltip: 'Remove entry',
                         ),

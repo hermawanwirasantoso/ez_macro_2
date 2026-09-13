@@ -174,6 +174,9 @@ void main() {
       final Finder chip = find.byKey(const Key('modalStoredFoodChip_food_oatmeal_1'));
       expect(chip, findsOneWidget);
 
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+
       // Tap chip to fill stored food
       await tester.tap(chip);
       await tester.pumpAndSettle();

@@ -3,6 +3,8 @@ import '../../calorie_tracker/data/calorie_storage.dart';
 import '../../calorie_tracker/domain/daily_log.dart';
 import '../../calorie_tracker/domain/saved_food.dart';
 import '../../calorie_tracker/domain/user_settings.dart';
+import '../../recipes/data/recipe_storage.dart';
+import '../../recipes/domain/recipe.dart';
 import '../../weight_tracker/data/weight_storage.dart';
 import '../../weight_tracker/domain/weight_entry.dart';
 import '../../weight_tracker/domain/weight_goal.dart';
@@ -16,6 +18,7 @@ class BackupData {
     required this.savedFoods,
     required this.weightEntries,
     this.weightGoal,
+    this.recipes = const <Recipe>[],
   });
 
   final int version;
@@ -25,6 +28,7 @@ class BackupData {
   final List<SavedFood> savedFoods;
   final List<WeightEntry> weightEntries;
   final WeightGoal? weightGoal;
+  final List<Recipe> recipes;
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
@@ -35,6 +39,7 @@ class BackupData {
       'savedFoods': savedFoods.map((SavedFood food) => food.toMap()).toList(),
       'weightEntries': weightEntries.map((WeightEntry entry) => entry.toMap()).toList(),
       'weightGoal': weightGoal?.toMap(),
+      'recipes': recipes.map((Recipe r) => r.toMap()).toList(),
     };
   }
 
@@ -62,6 +67,10 @@ class BackupData {
       weightGoal: map['weightGoal'] != null
           ? WeightGoal.fromMap(map['weightGoal'] as Map<String, dynamic>)
           : null,
+      recipes: (map['recipes'] as List<dynamic>?)
+              ?.map((dynamic e) => Recipe.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          <Recipe>[],
     );
   }
 
@@ -76,12 +85,16 @@ class BackupService {
   static Future<String> exportToJsonString({
     required CalorieStorage calorieStorage,
     required WeightStorage weightStorage,
+    RecipeStorage? recipeStorage,
   }) async {
     final UserSettings settings = await calorieStorage.loadSettings();
     final List<DailyLog> dailyLogs = await calorieStorage.loadAllLogs();
     final List<SavedFood> savedFoods = await calorieStorage.loadSavedFoods();
     final List<WeightEntry> weightEntries = await weightStorage.loadEntries();
     final WeightGoal? weightGoal = await weightStorage.loadGoal();
+    final List<Recipe> recipes = recipeStorage != null
+        ? await recipeStorage.loadRecipes()
+        : <Recipe>[];
 
     final BackupData backup = BackupData(
       version: 1,
@@ -91,6 +104,7 @@ class BackupService {
       savedFoods: savedFoods,
       weightEntries: weightEntries,
       weightGoal: weightGoal,
+      recipes: recipes,
     );
 
     return backup.toJson();
@@ -151,11 +165,15 @@ class BackupService {
     required BackupData data,
     required CalorieStorage calorieStorage,
     required WeightStorage weightStorage,
+    RecipeStorage? recipeStorage,
     bool merge = true,
   }) async {
     if (!merge) {
       await calorieStorage.clearAll();
       await weightStorage.clearAll();
+      if (recipeStorage != null) {
+        await recipeStorage.clearAll();
+      }
     }
 
     // Save user settings
@@ -180,14 +198,25 @@ class BackupService {
     if (data.weightGoal != null) {
       await weightStorage.saveGoal(data.weightGoal!);
     }
+
+    // Save recipes
+    if (recipeStorage != null) {
+      for (final Recipe recipe in data.recipes) {
+        await recipeStorage.saveRecipe(recipe);
+      }
+    }
   }
 
   /// Clears all database data.
   static Future<void> clearAllData({
     required CalorieStorage calorieStorage,
     required WeightStorage weightStorage,
+    RecipeStorage? recipeStorage,
   }) async {
     await calorieStorage.clearAll();
     await weightStorage.clearAll();
+    if (recipeStorage != null) {
+      await recipeStorage.clearAll();
+    }
   }
 }

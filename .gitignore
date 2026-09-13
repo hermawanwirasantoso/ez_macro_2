@@ -46,3 +46,17 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Secrets and local credentials — never commit
+.env
+.env.*
+!.env.example
+dart_defines.json
+*.dart_defines.json
+secrets.json
+**/secrets.json
+**/credentials.json
+*.pem
+*.p8
+*.p12
+*.mobileprovision

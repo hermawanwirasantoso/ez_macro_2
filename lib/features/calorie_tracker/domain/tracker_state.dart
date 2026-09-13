@@ -295,6 +295,19 @@ class CalorieTrackerState {
     saveToStorage();
   }
 
+  /// Adds copies of [copiedEntries] to the currently selected day with fresh
+  /// ids. Performs a single storage write for the whole batch.
+  void addCopiedEntries(List<FoodLogEntry> copiedEntries, {DateTime? timestamp}) {
+    if (copiedEntries.isEmpty) return;
+
+    final DateTime stamp = timestamp ?? DateTime.now();
+    for (final FoodLogEntry entry in copiedEntries) {
+      entries.insert(0, entry.asNewLogAgain(timestamp: stamp));
+    }
+    _recalculateTotals();
+    saveToStorage();
+  }
+
   void editEntry(int index, FoodLogEntry updated) {
     if (index < 0 || index >= entries.length) return;
     entries[index] = updated;

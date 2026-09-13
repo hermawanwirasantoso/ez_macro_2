@@ -45,8 +45,11 @@ class FoodLogEntry {
   final MealType mealType;
   final DateTime timestamp;
 
+  static int _idSequence = 0;
+
   static String _generateId() {
-    return '${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
+    _idSequence = (_idSequence + 1) % 1000000;
+    return '${DateTime.now().microsecondsSinceEpoch}_${_idSequence.toString().padLeft(6, '0')}';
   }
 
   String get portionDisplay {
@@ -67,6 +70,28 @@ class FoodLogEntry {
       buffer.write(' $sourceLabel');
     }
     return buffer.toString();
+  }
+
+  /// Creates a copy of this entry with a fresh id, suitable for re-logging.
+  FoodLogEntry asNewLogAgain({DateTime? timestamp}) {
+    return FoodLogEntry(
+      mealLabel: mealLabel,
+      calories: calories,
+      proteinG: proteinG,
+      carbsG: carbsG,
+      fatG: fatG,
+      saturatedFatG: saturatedFatG,
+      fiberG: fiberG,
+      addedSugarG: addedSugarG,
+      sodiumMg: sodiumMg,
+      portionSize: portionSize,
+      portionUnit: portionUnit,
+      rangeText: rangeText,
+      sourceLabel: sourceLabel,
+      spreadPercent: spreadPercent,
+      mealType: mealType,
+      timestamp: timestamp,
+    );
   }
 
   FoodLogEntry copyWith({

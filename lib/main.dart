@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'features/barcode/data/barcode_scanner_source.dart';
+import 'features/barcode/data/open_food_facts_lookup.dart';
+import 'features/barcode/domain/barcode_lookup.dart';
+import 'features/barcode/domain/product_info.dart';
 import 'features/calorie_tracker/data/api_key_storage.dart';
 import 'features/calorie_tracker/data/calorie_storage.dart';
 import 'features/calorie_tracker/data/google_ai_calorie_parser.dart';
@@ -26,6 +30,9 @@ import 'features/weight_tracker/data/weight_storage.dart';
 import 'features/weight_tracker/presentation/weight_tracker_page.dart';
 import 'features/tdee_calculator/presentation/tdee_calculator_screen.dart';
 import 'features/insights/presentation/insights_and_backup_modal.dart';
+import 'features/recipes/data/recipe_storage.dart';
+import 'features/recipes/domain/recipe.dart';
+import 'features/recipes/presentation/recipe_list_modal.dart';
 
 const String _googleAiApiKey = String.fromEnvironment('GOOGLE_AI_API_KEY');
 const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
@@ -50,19 +57,26 @@ class MacroTrackerApp extends StatefulWidget {
     ApiKeyStorage? apiKeyStorage,
     CalorieStorage? calorieStorage,
     WeightStorage? weightStorage,
+    RecipeStorage? recipeStorage,
     this.calorieParser,
     this.nutritionLabelImageSource,
+    this.barcodeScannerSource,
+    this.barcodeLookup,
     this.initialTabIndex = 0,
     this.showOnboarding,
   })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
         calorieStorage = calorieStorage ?? const PreferencesCalorieStorage(),
-        weightStorage = weightStorage ?? const PreferencesWeightStorage();
+        weightStorage = weightStorage ?? const PreferencesWeightStorage(),
+        recipeStorage = recipeStorage ?? const PreferencesRecipeStorage();
 
   final ApiKeyStorage apiKeyStorage;
   final CalorieStorage calorieStorage;
   final WeightStorage weightStorage;
+  final RecipeStorage recipeStorage;
   final CalorieParser? calorieParser;
   final NutritionLabelImageSource? nutritionLabelImageSource;
+  final BarcodeScannerSource? barcodeScannerSource;
+  final BarcodeLookup? barcodeLookup;
   final int initialTabIndex;
   final bool? showOnboarding;
 
@@ -133,8 +147,11 @@ class _MacroTrackerAppState extends State<MacroTrackerApp> {
               apiKeyStorage: widget.apiKeyStorage,
               calorieStorage: widget.calorieStorage,
               weightStorage: widget.weightStorage,
+              recipeStorage: widget.recipeStorage,
               calorieParser: widget.calorieParser,
               nutritionLabelImageSource: widget.nutritionLabelImageSource,
+              barcodeScannerSource: widget.barcodeScannerSource,
+              barcodeLookup: widget.barcodeLookup,
               initialIndex: widget.initialTabIndex,
             ),
     );
@@ -149,8 +166,11 @@ class MainNavigationScreen extends StatefulWidget {
     required this.apiKeyStorage,
     required this.calorieStorage,
     required this.weightStorage,
+    required this.recipeStorage,
     this.calorieParser,
     this.nutritionLabelImageSource,
+    this.barcodeScannerSource,
+    this.barcodeLookup,
     this.initialIndex = 0,
   });
 
@@ -159,8 +179,11 @@ class MainNavigationScreen extends StatefulWidget {
   final ApiKeyStorage apiKeyStorage;
   final CalorieStorage calorieStorage;
   final WeightStorage weightStorage;
+  final RecipeStorage recipeStorage;
   final CalorieParser? calorieParser;
   final NutritionLabelImageSource? nutritionLabelImageSource;
+  final BarcodeScannerSource? barcodeScannerSource;
+  final BarcodeLookup? barcodeLookup;
   final int initialIndex;
 
   @override
@@ -227,8 +250,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         apiKeyStorage: widget.apiKeyStorage,
         calorieStorage: widget.calorieStorage,
         weightStorage: widget.weightStorage,
+        recipeStorage: widget.recipeStorage,
         calorieParser: widget.calorieParser,
         nutritionLabelImageSource: widget.nutritionLabelImageSource,
+        barcodeScannerSource: widget.barcodeScannerSource,
+        barcodeLookup: widget.barcodeLookup,
         bottomNavigationBar: navBar,
       ),
       WeightTrackerPage(
@@ -254,20 +280,27 @@ class CalorieHomePage extends StatefulWidget {
     ApiKeyStorage? apiKeyStorage,
     CalorieStorage? calorieStorage,
     WeightStorage? weightStorage,
+    RecipeStorage? recipeStorage,
     this.calorieParser,
     this.nutritionLabelImageSource,
+    this.barcodeScannerSource,
+    this.barcodeLookup,
     this.bottomNavigationBar,
   })  : apiKeyStorage = apiKeyStorage ?? const SecureApiKeyStorage(),
         calorieStorage = calorieStorage ?? const PreferencesCalorieStorage(),
-        weightStorage = weightStorage ?? const PreferencesWeightStorage();
+        weightStorage = weightStorage ?? const PreferencesWeightStorage(),
+        recipeStorage = recipeStorage ?? const PreferencesRecipeStorage();
 
   final VoidCallback onToggleTheme;
   final bool isDarkMode;
   final ApiKeyStorage apiKeyStorage;
   final CalorieStorage calorieStorage;
   final WeightStorage weightStorage;
+  final RecipeStorage recipeStorage;
   final CalorieParser? calorieParser;
   final NutritionLabelImageSource? nutritionLabelImageSource;
+  final BarcodeScannerSource? barcodeScannerSource;
+  final BarcodeLookup? barcodeLookup;
   final Widget? bottomNavigationBar;
 
   @override
@@ -318,17 +351,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   }
 
   Future<void> _saveFoodForFutureUse(SavedFood food) async {
-    final int existingIndex = _savedFoods.indexWhere(
-      (SavedFood item) => item.name.toLowerCase() == food.name.toLowerCase(),
-    );
-    final SavedFood foodToSave = existingIndex == -1
-        ? food
-        : food.copyWith(
-            id: _savedFoods[existingIndex].id,
-            updatedAt: DateTime.now(),
-          );
-
-    await widget.calorieStorage.saveSavedFood(foodToSave);
+    await widget.calorieStorage.saveSavedFood(food);
     final List<SavedFood> savedFoods =
         await widget.calorieStorage.loadSavedFoods();
     if (mounted) {
@@ -362,6 +385,16 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   }
 
   bool get _hasConfiguredApiKey => _resolveApiKey().isNotEmpty;
+
+  BarcodeScannerSource get _barcodeScannerSource =>
+      widget.barcodeScannerSource ?? const DeviceBarcodeScannerSource();
+
+  BarcodeLookup get _barcodeLookup =>
+      widget.barcodeLookup ?? OpenFoodFactsBarcodeLookup();
+
+  Future<ProductInfo?> _lookupBarcode(String barcode) {
+    return _barcodeLookup.lookup(barcode);
+  }
 
   void _addCalories(
     int calories,
@@ -410,6 +443,83 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     );
   }
 
+  Future<void> _logEntryAgain(int index) async {
+    if (index < 0 || index >= _trackerState.filteredEntries.length) return;
+    final FoodLogEntry source = _trackerState.filteredEntries[index];
+    final bool wasViewingToday = _trackerState.isToday;
+
+    if (!wasViewingToday) {
+      setState(() {
+        _trackerState.selectedDate = DateTime.now();
+      });
+      await _trackerState.loadForDate(DateTime.now());
+      if (!mounted) return;
+    }
+
+    setState(() {
+      _trackerState.addCopiedEntries(<FoodLogEntry>[source]);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          wasViewingToday
+              ? 'Logged ${source.mealLabel} again.'
+              : 'Logged ${source.mealLabel} to today.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copyDayToToday() async {
+    if (_trackerState.isToday || _trackerState.entries.isEmpty) return;
+
+    final String sourceLabel = _trackerState.formattedDate;
+    final int count = _trackerState.entries.length;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Copy Day to Today?'),
+          content: Text(
+            'Copy $count ${count == 1 ? 'entry' : 'entries'} from $sourceLabel '
+            'to today? Entries already logged today will be kept.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('confirmCopyDayButton'),
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+              child: const Text('Copy'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final List<FoodLogEntry> sourceEntries =
+        List<FoodLogEntry>.from(_trackerState.entries);
+
+    setState(() {
+      _trackerState.selectedDate = DateTime.now();
+    });
+    await _trackerState.loadForDate(DateTime.now());
+    if (!mounted) return;
+
+    setState(() {
+      _trackerState.addCopiedEntries(sourceEntries);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied $count ${count == 1 ? 'entry' : 'entries'} to today.')),
+    );
+  }
+
   Future<void> _editEntry(int index) async {
     if (index < 0 || index >= _trackerState.filteredEntries.length) return;
     final FoodLogEntry target = _trackerState.filteredEntries[index];
@@ -422,6 +532,9 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       onDeleteSavedFood: _deleteSavedFood,
       nutritionLabelImageSource: widget.nutritionLabelImageSource,
       hasConfiguredApiKey: _hasConfiguredApiKey,
+      barcodeScannerSource: _barcodeScannerSource,
+      onLookupBarcode: _lookupBarcode,
+      recipeStorage: widget.recipeStorage,
       onParseNutritionLabel: (
         NutritionLabelImage image, {
         String? hint,
@@ -460,6 +573,9 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       onDeleteSavedFood: _deleteSavedFood,
       nutritionLabelImageSource: widget.nutritionLabelImageSource,
       hasConfiguredApiKey: _hasConfiguredApiKey,
+      barcodeScannerSource: _barcodeScannerSource,
+      onLookupBarcode: _lookupBarcode,
+      recipeStorage: widget.recipeStorage,
       onParseNutritionLabel: (
         NutritionLabelImage image, {
         String? hint,
@@ -715,16 +831,18 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
       food: food,
       defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
       onOpenFullEdit: () async {
-        Navigator.of(context).pop();
-        final FoodLogEntry? manualResult = await FoodEntryModal.showAdd(
-          context,
-          defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
-          savedFoods: _savedFoods,
-          onSaveFood: _saveFoodForFutureUse,
-          onDeleteSavedFood: _deleteSavedFood,
-          nutritionLabelImageSource: widget.nutritionLabelImageSource,
-          hasConfiguredApiKey: _hasConfiguredApiKey,
-          onParseNutritionLabel: (
+          Navigator.of(context).pop();
+          final FoodLogEntry? manualResult = await FoodEntryModal.showAdd(
+            context,
+            defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+            savedFoods: _savedFoods,
+            onSaveFood: _saveFoodForFutureUse,
+            onDeleteSavedFood: _deleteSavedFood,
+            nutritionLabelImageSource: widget.nutritionLabelImageSource,
+            hasConfiguredApiKey: _hasConfiguredApiKey,
+            barcodeScannerSource: _barcodeScannerSource,
+            onLookupBarcode: _lookupBarcode,
+            onParseNutritionLabel: (
             NutritionLabelImage image, {
             String? hint,
           }) {
@@ -848,12 +966,58 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
               shape: BoxShape.circle,
             ),
             child: IconButton(
+              key: const Key('openRecipesModalButton'),
+              onPressed: () {
+                RecipeListModal.show(
+                  context,
+                  recipeStorage: widget.recipeStorage,
+                  savedFoods: _savedFoods,
+                  defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+                  onLogRecipe: (Recipe recipe, double servings, MealType mealType) {
+                    final FoodLogEntry entry = recipe.toFoodLogEntry(
+                      loggedServings: servings,
+                      mealType: mealType,
+                    );
+                    _addCalories(
+                      entry.calories,
+                      entry.mealLabel,
+                      proteinG: entry.proteinG,
+                      carbsG: entry.carbsG,
+                      fatG: entry.fatG,
+                      saturatedFatG: entry.saturatedFatG,
+                      fiberG: entry.fiberG,
+                      addedSugarG: entry.addedSugarG,
+                      sodiumMg: entry.sodiumMg,
+                      portionSize: entry.portionSize,
+                      portionUnit: entry.portionUnit,
+                      sourceLabel: entry.sourceLabel ?? 'Recipe',
+                      mealType: entry.mealType,
+                    );
+                  },
+                );
+              },
+              icon: const Icon(
+                Icons.soup_kitchen_rounded,
+                size: 18,
+                color: AppColors.primaryLight,
+              ),
+              tooltip: 'Recipes & Meal Templates',
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
               key: const Key('openInsightsModalButton'),
               onPressed: () {
                 InsightsAndBackupModal.show(
                   context,
                   calorieStorage: widget.calorieStorage,
                   weightStorage: widget.weightStorage,
+                  recipeStorage: widget.recipeStorage,
                   onDataRestored: () {
                     _initTrackerData();
                     _loadSavedFoods();
@@ -1013,6 +1177,9 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                 selectedMealFilter: _trackerState.selectedMealFilter,
                 onRemoveEntry: _removeEntry,
                 onEditEntry: _editEntry,
+                onLogAgain: _logEntryAgain,
+                onCopyDayToToday:
+                    _trackerState.isToday ? null : _copyDayToToday,
                 onClearAll: _confirmClearDay,
               ),
 
