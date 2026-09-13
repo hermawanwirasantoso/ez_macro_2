@@ -31,7 +31,7 @@ flutter test
 flutter run
 ```
 
-## Optional Gemini API key
+## Optional Gemini API key (Very Recommended for the app to fully work, since this is the core of the app)
 
 Basic logging, saved foods, recipes, barcode lookup, weight, TDEE, and backups work without a key.
 
