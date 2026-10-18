@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../domain/calorie_parser.dart';
 import '../domain/nutrition_label_image.dart';
 import '../domain/parse_result.dart';
+import 'calorie_json_parser.dart';
 
 typedef GeminiCalorieParser = GoogleAiCalorieParser;
 
@@ -15,18 +16,14 @@ class GoogleAiCalorieParser implements CalorieParser {
     this.model = 'gemini-3.5-flash-lite',
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta',
     this.client,
+    this.thinkingConfig,
   });
 
   final String apiKey;
   final String model;
   final String baseUrl;
   final http.Client? client;
-
-  static const String _textSystemInstruction =
-      'Extract meal label, portion size, portion unit, calories, macronutrients, and complete nutrition details (saturated fat, fiber, added sugar, sodium) from user text. If input includes portion or weight (e.g. "200g chicken breast", "1.5 cup rice", "2 eggs"), extract the portion size (number) and unit (string, e.g. "g", "cup", "piece", "oz", "serving"), and infer calories and nutrition for that portion. Return JSON only: {"mealLabel":"string","portionSize":number,"portionUnit":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}. Default portionSize to 1 and portionUnit to "serving" if not specified.';
-
-  static const String _labelSystemInstruction =
-      'Read the nutrition facts label in the image. Extract the product or food name, serving/portion size (number), portion unit (e.g. "g", "ml", "pieces", "oz", "cup", "serving"), calories, protein, carbs, fat, saturated fat, dietary fiber, added sugar, and sodium for one serving shown on the label. Return JSON only: {"mealLabel":"string","portionSize":number,"portionUnit":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"saturatedFatG":number,"fiberG":number,"addedSugarG":number,"sodiumMg":number,"confidence":0..1}. Default portionSize to 1 and portionUnit to "serving" if not specified.';
+  final Map<String, Object>? thinkingConfig;
 
   @override
   Future<ParseResult?> parse(String input) async {
@@ -36,7 +33,7 @@ class GoogleAiCalorieParser implements CalorieParser {
     }
 
     return _generateContent(
-      systemInstruction: _textSystemInstruction,
+      systemInstruction: CalorieParsePrompts.textSystemInstruction,
       parts: <Map<String, Object>>[
         <String, Object>{'text': trimmedInput},
       ],
@@ -54,11 +51,11 @@ class GoogleAiCalorieParser implements CalorieParser {
 
     final String trimmedHint = hint?.trim() ?? '';
     final String prompt = trimmedHint.isEmpty
-        ? 'Extract nutrition facts for one serving from this label photo.'
-        : 'Extract nutrition facts for one serving from this label photo. Product hint: $trimmedHint';
+        ? CalorieParsePrompts.labelUserPrompt
+        : '${CalorieParsePrompts.labelUserPrompt} Product hint: $trimmedHint';
 
     return _generateContent(
-      systemInstruction: _labelSystemInstruction,
+      systemInstruction: CalorieParsePrompts.labelSystemInstruction,
       parts: <Map<String, Object>>[
         <String, Object>{'text': prompt},
         <String, Object>{
@@ -110,6 +107,62 @@ class GoogleAiCalorieParser implements CalorieParser {
     }
   }
 
+  Map<String, Object>? _resolveThinkingConfig() {
+    if (thinkingConfig != null) {
+      return thinkingConfig!.isEmpty ? null : thinkingConfig;
+    }
+    return defaultThinkingConfigForModel(model);
+  }
+
+  /// Returns the recommended default `thinkingConfig` payload for a given model.
+  ///
+  /// - Gemini 3.x+ models (e.g. `gemini-3.5-flash-lite`, `gemini-3-flash`):
+  ///   Require `thinkingLevel` (`'low'`, `'medium'`, `'high'`, `'minimal'`).
+  ///   Passing `thinkingBudget: 0` causes:
+  ///   "Thinking budget does not map to any valid thinking level."
+  ///   We use `'low'` to minimize latency and token consumption while parsing.
+  /// - Gemini 2.x models (e.g. `gemini-2.5-flash`):
+  ///   Support `thinkingBudget: 0` to disable reasoning tokens.
+  /// - Older models (e.g. `gemini-1.5-flash`):
+  ///   Do not support `thinkingConfig` (returns `null`).
+  static Map<String, Object>? defaultThinkingConfigForModel(String model) {
+    String lower = model.trim().toLowerCase();
+    if (lower.startsWith('models/')) {
+      lower = lower.substring('models/'.length);
+    }
+
+    if (!lower.startsWith('gemini') && !lower.contains('/gemini')) {
+      return null;
+    }
+
+    // Models older than 2.0 (e.g. gemini-1.5-flash, gemini-1.0-pro, gemini-pro)
+    // do not support thinkingConfig.
+    if (lower.startsWith('gemini-1.') ||
+        lower.startsWith('gemini-1-') ||
+        lower.contains('/gemini-1.') ||
+        lower == 'gemini-pro' ||
+        lower.contains('gemini-pro-vision')) {
+      return null;
+    }
+
+    // Gemini 2.0 / 2.5 models use numeric thinkingBudget (0 disables thinking).
+    if (lower.startsWith('gemini-2.') ||
+        lower.startsWith('gemini-2-') ||
+        lower.contains('/gemini-2.') ||
+        lower.contains('/gemini-2-')) {
+      return <String, Object>{
+        'thinkingBudget': 0,
+      };
+    }
+
+    // Gemini 3 and newer (including default gemini-3.5-flash-lite) use thinkingLevel.
+    // Supplying thinkingBudget (especially 0) causes:
+    // "Thinking budget does not map to any valid thinking level."
+    return <String, Object>{
+      'thinkingLevel': 'low',
+    };
+  }
+
   Future<http.Response> _postGenerateContent({
     required http.Client httpClient,
     required Uri uri,
@@ -117,6 +170,13 @@ class GoogleAiCalorieParser implements CalorieParser {
     required List<Map<String, Object>> parts,
     required Duration timeout,
   }) {
+    final Map<String, Object>? resolvedThinkingConfig = _resolveThinkingConfig();
+    final Map<String, Object> generationConfig = <String, Object>{
+      'temperature': 0,
+      'responseMimeType': 'application/json',
+      'thinkingConfig': ?resolvedThinkingConfig,
+    };
+
     final Map<String, Object> payload = <String, Object>{
       'systemInstruction': <String, Object>{
         'parts': <Map<String, String>>[
@@ -129,10 +189,7 @@ class GoogleAiCalorieParser implements CalorieParser {
           'parts': parts,
         },
       ],
-      'generationConfig': <String, Object>{
-        'temperature': 0,
-        'responseMimeType': 'application/json',
-      },
+      'generationConfig': generationConfig,
     };
 
     return httpClient
@@ -182,12 +239,7 @@ class GoogleAiCalorieParser implements CalorieParser {
         continue;
       }
 
-      final Map<String, dynamic>? extracted = _extractJsonMap(contentText);
-      if (extracted == null) {
-        continue;
-      }
-
-      final ParseResult? result = _buildParseResult(extracted);
+      final ParseResult? result = CalorieJsonParser.fromModelText(contentText);
       if (result != null) {
         return result;
       }
@@ -195,226 +247,6 @@ class GoogleAiCalorieParser implements CalorieParser {
 
     _debugLog('Google AI Studio failed to parse candidates: $candidates');
     return null;
-  }
-
-  ParseResult? _buildParseResult(Map<String, dynamic> extracted) {
-    final String? labelCandidate = _toStringByKeys(extracted, <String>[
-      'mealLabel',
-      'meal_label',
-      'mealName',
-      'meal_name',
-      'foodName',
-      'food_name',
-      'productName',
-      'product_name',
-      'name',
-      'meal',
-      'food',
-      'product',
-      'item',
-      'label',
-      'title',
-      'description',
-    ]);
-    final String rawLabel = labelCandidate?.trim() ?? '';
-    final String mealLabel = rawLabel.isEmpty ? 'Meal' : rawLabel;
-
-    final int? calories = _toIntByKeys(extracted, <String>[
-      'calories',
-      'calorie',
-      'kcal',
-      'calories_kcal',
-      'energy',
-      'energy_kcal',
-      'energyKcal',
-      'total_calories',
-      'totalCalories',
-      'calories_per_serving',
-      'caloriesPerServing',
-      'calories_per_container',
-      'caloriesPerContainer',
-      'cals',
-    ]);
-
-    if (calories == null || calories <= 0) {
-      _debugLog('Google AI Studio response missing calories field: $extracted');
-      return null;
-    }
-
-    final ({int protein, int carbs, int fat}) estimated =
-        _estimateMacrosForCalories(calories);
-
-    final int proteinG = (_toIntByKeys(extracted, <String>[
-              'proteinG',
-              'protein_g',
-              'protein',
-              'proteins',
-              'total_protein',
-              'totalProtein',
-              'protein_grams',
-              'proteinGrams',
-            ]) ??
-            estimated.protein)
-        .clamp(0, 400)
-        .toInt();
-
-    final int carbsG = (_toIntByKeys(extracted, <String>[
-              'carbsG',
-              'carbs_g',
-              'carbs',
-              'carb',
-              'carbohydrate',
-              'carbohydrates',
-              'carbohydrate_g',
-              'carbohydrateG',
-              'total_carbohydrate',
-              'totalCarbohydrate',
-              'total_carbs',
-              'totalCarbs',
-              'carbs_grams',
-              'carbsGrams',
-              'net_carbs',
-              'netCarbs',
-            ]) ??
-            estimated.carbs)
-        .clamp(0, 600)
-        .toInt();
-
-    final int fatG = (_toIntByKeys(extracted, <String>[
-              'fatG',
-              'fat_g',
-              'fat',
-              'fats',
-              'total_fat',
-              'totalFat',
-              'fat_grams',
-              'fatGrams',
-            ]) ??
-            estimated.fat)
-        .clamp(0, 300)
-        .toInt();
-
-    final int saturatedFatG = (_toIntByKeys(extracted, <String>[
-              'saturatedFatG',
-              'saturated_fat_g',
-              'saturated_fat',
-              'saturatedFat',
-              'sat_fat_g',
-              'sat_fat',
-              'satFat',
-              'saturated_fat_grams',
-              'saturatedFatGrams',
-              'saturated',
-            ]) ??
-            0)
-        .clamp(0, 200)
-        .toInt();
-
-    final int fiberG = (_toIntByKeys(extracted, <String>[
-              'fiberG',
-              'fiber_g',
-              'fiber',
-              'fibers',
-              'dietary_fiber',
-              'dietaryFiber',
-              'total_fiber',
-              'totalFiber',
-              'dietary_fiber_g',
-              'dietaryFiberG',
-              'fiber_grams',
-              'fiberGrams',
-            ]) ??
-            0)
-        .clamp(0, 200)
-        .toInt();
-
-    final int addedSugarG = (_toIntByKeys(extracted, <String>[
-              'addedSugarG',
-              'added_sugar_g',
-              'added_sugar',
-              'added_sugars',
-              'addedSugar',
-              'addedSugars',
-              'added_sugar_grams',
-              'addedSugarGrams',
-              'sugarG',
-              'sugar_g',
-              'sugar',
-              'sugars',
-              'total_sugar',
-              'totalSugars',
-            ]) ??
-            0)
-        .clamp(0, 500)
-        .toInt();
-
-    final int sodiumMg = (_toIntByKeys(extracted, <String>[
-              'sodiumMg',
-              'sodium_mg',
-              'sodium',
-              'sodium_milligrams',
-              'sodiumMilligrams',
-              'salt_mg',
-              'salt',
-            ]) ??
-            0)
-        .clamp(0, 20000)
-        .toInt();
-
-    final double portionSize = (_toDoubleByKeys(extracted, <String>[
-              'portionSize',
-              'portion_size',
-              'servingSize',
-              'serving_size',
-              'amount',
-              'quantity',
-              'portion',
-              'serving',
-              'serving_size_g',
-              'servingSizeG',
-            ]) ??
-            1.0)
-        .clamp(0.01, 99999.0);
-
-    final String rawPortionUnit = (_toStringByKeys(extracted, <String>[
-              'portionUnit',
-              'portion_unit',
-              'servingUnit',
-              'serving_unit',
-              'unit',
-              'serving_size_unit',
-              'portion_size_unit',
-              'units',
-              'serving_unit_name',
-            ]) ??
-            'serving')
-        .trim();
-    final String portionUnit =
-        rawPortionUnit.isEmpty ? 'serving' : rawPortionUnit;
-
-    final double confidence =
-        _toDoubleByKeys(extracted, <String>[
-              'confidence',
-              'score',
-              'accuracy',
-              'probability',
-            ])?.clamp(0.0, 1.0) ??
-            0.85;
-
-    return ParseResult(
-      mealLabel: mealLabel,
-      calories: calories.clamp(1, 5000).toInt(),
-      confidence: confidence,
-      proteinG: proteinG,
-      carbsG: carbsG,
-      fatG: fatG,
-      saturatedFatG: saturatedFatG,
-      fiberG: fiberG,
-      addedSugarG: addedSugarG,
-      sodiumMg: sodiumMg,
-      portionSize: portionSize,
-      portionUnit: portionUnit,
-    );
   }
 
   Uri _buildGenerateContentUri({
@@ -451,6 +283,24 @@ class GoogleAiCalorieParser implements CalorieParser {
     }
 
     if (parts is List<dynamic>) {
+      // 1. Try finding a non-thought part that contains valid calorie JSON directly.
+      for (final dynamic part in parts) {
+        if (part is Map) {
+          final dynamic text = part['text'];
+          final bool isThought =
+              part['thought'] == true ||
+              part['thought'] == 'true' ||
+              part['role'] == 'thought';
+
+          if (text is String && text.trim().isNotEmpty && !isThought) {
+            if (CalorieJsonParser.fromModelText(text) != null) {
+              return text;
+            }
+          }
+        }
+      }
+
+      // 2. Concatenate non-thought parts (e.g. streaming or split text).
       final StringBuffer nonThoughtBuffer = StringBuffer();
       final StringBuffer allBuffer = StringBuffer();
 
@@ -458,7 +308,9 @@ class GoogleAiCalorieParser implements CalorieParser {
         if (part is Map) {
           final dynamic text = part['text'];
           final bool isThought =
-              part['thought'] == true || part['thought'] == 'true';
+              part['thought'] == true ||
+              part['thought'] == 'true' ||
+              part['role'] == 'thought';
           if (text is String && text.isNotEmpty) {
             allBuffer.write(text);
             if (!isThought) {
@@ -476,6 +328,18 @@ class GoogleAiCalorieParser implements CalorieParser {
         return nonThoughtValue;
       }
 
+      // 3. Fallback: try finding any part that contains valid calorie JSON directly.
+      for (final dynamic part in parts) {
+        if (part is Map) {
+          final dynamic text = part['text'];
+          if (text is String && text.trim().isNotEmpty) {
+            if (CalorieJsonParser.fromModelText(text) != null) {
+              return text;
+            }
+          }
+        }
+      }
+
       final String allValue = allBuffer.toString().trim();
       return allValue.isEmpty ? null : allValue;
     }
@@ -488,307 +352,6 @@ class GoogleAiCalorieParser implements CalorieParser {
     }
 
     return null;
-  }
-
-  Map<String, dynamic>? _extractJsonMap(String input) {
-    final String trimmed = input.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-
-    // Attempt 1: Direct JSON decode
-    try {
-      final dynamic decoded = jsonDecode(trimmed);
-      final Map<String, dynamic>? map = _findRelevantMap(decoded);
-      if (map != null) {
-        return map;
-      }
-    } catch (_) {}
-
-    // Attempt 2: Strip markdown code fences ```json ... ``` or ``` ... ```
-    final RegExp codeBlockRegex = RegExp(
-      r'```(?:json)?\s*([\s\S]*?)\s*```',
-      caseSensitive: false,
-    );
-    for (final RegExpMatch match in codeBlockRegex.allMatches(trimmed)) {
-      final String? blockContent = match.group(1)?.trim();
-      if (blockContent != null && blockContent.isNotEmpty) {
-        try {
-          final dynamic decoded = jsonDecode(blockContent);
-          final Map<String, dynamic>? map = _findRelevantMap(decoded);
-          if (map != null) {
-            return map;
-          }
-        } catch (_) {}
-      }
-    }
-
-    // Attempt 3: Find outermost balanced { ... } or substring from first { to last }
-    final int firstBrace = trimmed.indexOf('{');
-    final int lastBrace = trimmed.lastIndexOf('}');
-    if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
-      try {
-        final dynamic decoded =
-            jsonDecode(trimmed.substring(firstBrace, lastBrace + 1));
-        final Map<String, dynamic>? map = _findRelevantMap(decoded);
-        if (map != null) {
-          return map;
-        }
-      } catch (_) {}
-
-      // Try balanced braces extraction from each '{'
-      for (int i = 0; i < trimmed.length; i++) {
-        if (trimmed[i] == '{') {
-          int depth = 0;
-          bool inString = false;
-          bool escape = false;
-          for (int j = i; j < trimmed.length; j++) {
-            final String char = trimmed[j];
-            if (escape) {
-              escape = false;
-              continue;
-            }
-            if (char == '\\') {
-              escape = true;
-              continue;
-            }
-            if (char == '"') {
-              inString = !inString;
-              continue;
-            }
-            if (!inString) {
-              if (char == '{') depth++;
-              if (char == '}') {
-                depth--;
-                if (depth == 0) {
-                  try {
-                    final dynamic decoded =
-                        jsonDecode(trimmed.substring(i, j + 1));
-                    final Map<String, dynamic>? map = _findRelevantMap(decoded);
-                    if (map != null) {
-                      return map;
-                    }
-                  } catch (_) {}
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Attempt 4: Try JSON array [ ... ]
-    final int firstBracket = trimmed.indexOf('[');
-    final int lastBracket = trimmed.lastIndexOf(']');
-    if (firstBracket != -1 && lastBracket != -1 && lastBracket > firstBracket) {
-      try {
-        final dynamic decoded =
-            jsonDecode(trimmed.substring(firstBracket, lastBracket + 1));
-        final Map<String, dynamic>? map = _findRelevantMap(decoded);
-        if (map != null) {
-          return map;
-        }
-      } catch (_) {}
-    }
-
-    return null;
-  }
-
-  Map<String, dynamic>? _findRelevantMap(dynamic decoded) {
-    if (decoded is Map) {
-      final Map<String, dynamic> map = decoded.map(
-        (dynamic key, dynamic value) =>
-            MapEntry<String, dynamic>(key.toString(), value),
-      );
-
-      if (_hasCalorieKey(map)) {
-        return map;
-      }
-
-      for (final dynamic val in map.values) {
-        if (val is Map) {
-          final Map<String, dynamic>? nested = _findRelevantMap(val);
-          if (nested != null) {
-            return <String, dynamic>{
-              ...map,
-              ...nested,
-            };
-          }
-        } else if (val is List) {
-          final Map<String, dynamic>? fromList = _findRelevantMap(val);
-          if (fromList != null) {
-            return <String, dynamic>{
-              ...map,
-              ...fromList,
-            };
-          }
-        }
-      }
-
-      return map;
-    }
-
-    if (decoded is List) {
-      for (final dynamic item in decoded) {
-        final Map<String, dynamic>? candidate = _findRelevantMap(item);
-        if (candidate != null && _hasCalorieKey(candidate)) {
-          return candidate;
-        }
-      }
-      if (decoded.isNotEmpty && decoded.first is Map) {
-        return _findRelevantMap(decoded.first);
-      }
-    }
-
-    return null;
-  }
-
-  bool _hasCalorieKey(Map<String, dynamic> map) {
-    const List<String> calorieKeys = <String>[
-      'calories',
-      'calorie',
-      'kcal',
-      'calorieskcal',
-      'energy',
-      'energykcal',
-      'totalcalories',
-      'caloriesperserving',
-      'caloriespercontainer',
-      'cals',
-    ];
-    return map.keys.any((String k) {
-      final String normalized =
-          k.toLowerCase().replaceAll(RegExp(r'[\s_-]'), '');
-      return calorieKeys.contains(normalized);
-    });
-  }
-
-  String? _toStringByKeys(Map<String, dynamic> map, List<String> keys) {
-    for (final String key in keys) {
-      if (map.containsKey(key) && map[key] != null) {
-        final String val = map[key].toString().trim();
-        if (val.isNotEmpty) {
-          return val;
-        }
-      }
-      final String lowerKey = key.toLowerCase();
-      for (final MapEntry<String, dynamic> entry in map.entries) {
-        if (entry.key.toLowerCase() == lowerKey && entry.value != null) {
-          final String val = entry.value.toString().trim();
-          if (val.isNotEmpty) {
-            return val;
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  int? _toIntByKeys(Map<String, dynamic> map, List<String> keys) {
-    for (final String key in keys) {
-      if (map.containsKey(key) && map[key] != null) {
-        final int? value = _toInt(map[key]);
-        if (value != null) {
-          return value;
-        }
-      }
-      final String lowerKey = key.toLowerCase();
-      for (final MapEntry<String, dynamic> entry in map.entries) {
-        if (entry.key.toLowerCase() == lowerKey && entry.value != null) {
-          final int? value = _toInt(entry.value);
-          if (value != null) {
-            return value;
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  double? _toDoubleByKeys(Map<String, dynamic> map, List<String> keys) {
-    for (final String key in keys) {
-      if (map.containsKey(key) && map[key] != null) {
-        final double? value = _toDouble(map[key]);
-        if (value != null) {
-          return value;
-        }
-      }
-      final String lowerKey = key.toLowerCase();
-      for (final MapEntry<String, dynamic> entry in map.entries) {
-        if (entry.key.toLowerCase() == lowerKey && entry.value != null) {
-          final double? value = _toDouble(entry.value);
-          if (value != null) {
-            return value;
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  int? _toInt(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.round();
-    }
-    if (value is String) {
-      final String trimmed = value.trim();
-      final int? directInt = int.tryParse(trimmed);
-      if (directInt != null) {
-        return directInt;
-      }
-      final double? directDouble = double.tryParse(trimmed);
-      if (directDouble != null) {
-        return directDouble.round();
-      }
-      final RegExpMatch? match =
-          RegExp(r'(\d+(?:\.\d+)?)').firstMatch(trimmed);
-      if (match != null) {
-        final double? parsed = double.tryParse(match.group(1) ?? '');
-        if (parsed != null) {
-          return parsed.round();
-        }
-      }
-    }
-    return null;
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-    if (value is double) {
-      return value;
-    }
-    if (value is num) {
-      return value.toDouble();
-    }
-    if (value is String) {
-      final String trimmed = value.trim();
-      final double? directDouble = double.tryParse(trimmed);
-      if (directDouble != null) {
-        return directDouble;
-      }
-      final RegExpMatch? match =
-          RegExp(r'(\d+(?:\.\d+)?)').firstMatch(trimmed);
-      if (match != null) {
-        return double.tryParse(match.group(1) ?? '');
-      }
-    }
-    return null;
-  }
-
-  ({int protein, int carbs, int fat}) _estimateMacrosForCalories(int calories) {
-    final int protein = (calories * 0.30 / 4).round();
-    final int carbs = (calories * 0.40 / 4).round();
-    final int fat = (calories * 0.30 / 9).round();
-    return (protein: protein, carbs: carbs, fat: fat);
   }
 
   void _debugLog(String message) {

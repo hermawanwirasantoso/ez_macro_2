@@ -6,7 +6,10 @@ import 'features/barcode/domain/barcode_lookup.dart';
 import 'features/barcode/domain/product_info.dart';
 import 'features/calorie_tracker/data/api_key_storage.dart';
 import 'features/calorie_tracker/data/calorie_storage.dart';
+import 'features/calorie_tracker/data/chained_calorie_parser.dart';
+import 'features/calorie_tracker/data/claude_calorie_parser.dart';
 import 'features/calorie_tracker/data/google_ai_calorie_parser.dart';
+import 'features/calorie_tracker/data/qwencloud_calorie_parser.dart';
 import 'features/calorie_tracker/data/nutrition_label_image_source.dart';
 import 'features/calorie_tracker/domain/calorie_parser.dart';
 import 'features/calorie_tracker/domain/nutrition_label_image.dart';
@@ -34,6 +37,16 @@ import 'features/recipes/data/recipe_storage.dart';
 import 'features/recipes/domain/recipe.dart';
 import 'features/recipes/presentation/recipe_list_modal.dart';
 
+const String _anthropicApiKey = String.fromEnvironment('ANTHROPIC_API_KEY');
+const String _claudeApiKey = String.fromEnvironment('CLAUDE_API_KEY');
+const String _anthropicBaseUrl = String.fromEnvironment(
+  'ANTHROPIC_BASE_URL',
+  defaultValue: 'https://api.anthropic.com',
+);
+const String _claudeModel = String.fromEnvironment(
+  'CLAUDE_MODEL',
+  defaultValue: 'claude-haiku-5-5',
+);
 const String _googleAiApiKey = String.fromEnvironment('GOOGLE_AI_API_KEY');
 const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
 const String _googleApiKey = String.fromEnvironment('GOOGLE_API_KEY');
@@ -45,6 +58,18 @@ const String _googleAiBaseUrl = String.fromEnvironment(
 const String _googleAiModel = String.fromEnvironment(
   'GOOGLE_AI_MODEL',
   defaultValue: 'gemini-3.5-flash-lite',
+);
+const String _googleAiThinkingLevel = String.fromEnvironment('GOOGLE_AI_THINKING_LEVEL');
+const String _qwenApiKey = String.fromEnvironment('QWEN_API_KEY');
+const String _dashscopeApiKey = String.fromEnvironment('DASHSCOPE_API_KEY');
+const String _qwenCloudApiKey = String.fromEnvironment('QWENCLOUD_API_KEY');
+const String _qwenCloudBaseUrl = String.fromEnvironment(
+  'QWENCLOUD_BASE_URL',
+  defaultValue: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+);
+const String _qwenCloudModel = String.fromEnvironment(
+  'QWENCLOUD_MODEL',
+  defaultValue: 'deepseek-v4.1-flash',
 );
 
 void main() {
@@ -310,6 +335,8 @@ class CalorieHomePage extends StatefulWidget {
 class _CalorieHomePageState extends State<CalorieHomePage> {
   late final CalorieTrackerState _trackerState;
   String? _userApiKey;
+  String? _userQwenApiKey;
+  String? _userClaudeApiKey;
   late CalorieParser _calorieParser = _buildParser();
   final CalorieParser _fallbackParser = const RegexCalorieParser();
   final TextEditingController _nlInputController = TextEditingController();
@@ -373,9 +400,25 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   Future<void> _loadSavedApiKey() async {
     try {
       final String? key = await widget.apiKeyStorage.getApiKey();
-      if (mounted && key != null && key.isNotEmpty) {
+      final String? qwenKey = await widget.apiKeyStorage.getQwenApiKey();
+      final String? claudeKey = await widget.apiKeyStorage.getClaudeApiKey();
+      if (!mounted) {
+        return;
+      }
+      final bool hasGemini = key != null && key.isNotEmpty;
+      final bool hasQwen = qwenKey != null && qwenKey.isNotEmpty;
+      final bool hasClaude = claudeKey != null && claudeKey.isNotEmpty;
+      if (hasGemini || hasQwen || hasClaude) {
         setState(() {
-          _userApiKey = key;
+          if (hasClaude) {
+            _userClaudeApiKey = claudeKey;
+          }
+          if (hasGemini) {
+            _userApiKey = key;
+          }
+          if (hasQwen) {
+            _userQwenApiKey = qwenKey;
+          }
           _calorieParser = _buildParser();
         });
       }
@@ -384,7 +427,10 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     }
   }
 
-  bool get _hasConfiguredApiKey => _resolveApiKey().isNotEmpty;
+  bool get _hasConfiguredApiKey =>
+      _resolveClaudeApiKey().isNotEmpty ||
+      _resolveApiKey().isNotEmpty ||
+      _resolveQwenApiKey().isNotEmpty;
 
   BarcodeScannerSource get _barcodeScannerSource =>
       widget.barcodeScannerSource ?? const DeviceBarcodeScannerSource();
@@ -644,15 +690,65 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     if (widget.calorieParser != null) {
       return widget.calorieParser!;
     }
-    final String apiKey = _resolveApiKey();
-    if (apiKey.isNotEmpty) {
-      return GoogleAiCalorieParser(
-        apiKey: apiKey,
-        model: _googleAiModel,
-        baseUrl: _googleAiBaseUrl,
+
+    final List<CalorieParser> parsers = <CalorieParser>[];
+    final String claudeKey = _resolveClaudeApiKey();
+    if (claudeKey.isNotEmpty) {
+      parsers.add(
+        ClaudeCalorieParser(
+          apiKey: claudeKey,
+          model: _claudeModel,
+          baseUrl: _anthropicBaseUrl,
+        ),
       );
     }
-    return const RegexCalorieParser();
+
+    final String geminiKey = _resolveApiKey();
+    if (geminiKey.isNotEmpty) {
+      parsers.add(
+        GoogleAiCalorieParser(
+          apiKey: geminiKey,
+          model: _googleAiModel,
+          baseUrl: _googleAiBaseUrl,
+          thinkingConfig: _googleAiThinkingLevel.isNotEmpty
+              ? <String, Object>{'thinkingLevel': _googleAiThinkingLevel}
+              : null,
+        ),
+      );
+    }
+
+    final String qwenKey = _resolveQwenApiKey();
+    if (qwenKey.isNotEmpty) {
+      parsers.add(
+        QwenCloudCalorieParser(
+          apiKey: qwenKey,
+          model: _qwenCloudModel,
+          baseUrl: _qwenCloudBaseUrl,
+        ),
+      );
+    }
+
+    if (parsers.isEmpty) {
+      return const RegexCalorieParser();
+    }
+    if (parsers.length == 1) {
+      return parsers.first;
+    }
+    return ChainedCalorieParser(parsers);
+  }
+
+  String _resolveClaudeApiKey() {
+    if (_userClaudeApiKey != null && _userClaudeApiKey!.isNotEmpty) {
+      return _userClaudeApiKey!;
+    }
+    return _resolveEnvClaudeApiKey();
+  }
+
+  String _resolveEnvClaudeApiKey() {
+    if (_anthropicApiKey.isNotEmpty) {
+      return _anthropicApiKey;
+    }
+    return _claudeApiKey;
   }
 
   String _resolveApiKey() {
@@ -675,16 +771,39 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     return _googleAiStudioApiKey;
   }
 
+  String _resolveQwenApiKey() {
+    if (_userQwenApiKey != null && _userQwenApiKey!.isNotEmpty) {
+      return _userQwenApiKey!;
+    }
+    return _resolveEnvQwenApiKey();
+  }
+
+  String _resolveEnvQwenApiKey() {
+    if (_qwenApiKey.isNotEmpty) {
+      return _qwenApiKey;
+    }
+    if (_dashscopeApiKey.isNotEmpty) {
+      return _dashscopeApiKey;
+    }
+    return _qwenCloudApiKey;
+  }
+
   Future<void> _openApiKeyModal() async {
-    final String? updatedKey = await ApiKeyModal.show(
+    final ApiKeyModalResult? updated = await ApiKeyModal.show(
       context,
       storage: widget.apiKeyStorage,
       currentKey: _userApiKey,
       envKey: _resolveEnvApiKey(),
+      currentQwenKey: _userQwenApiKey,
+      envQwenKey: _resolveEnvQwenApiKey(),
+      currentClaudeKey: _userClaudeApiKey,
+      envClaudeKey: _resolveEnvClaudeApiKey(),
     );
-    if (updatedKey != null && mounted) {
+    if (updated != null && mounted) {
       setState(() {
-        _userApiKey = updatedKey.isEmpty ? null : updatedKey;
+        _userClaudeApiKey = updated.claudeKey;
+        _userApiKey = updated.geminiKey;
+        _userQwenApiKey = updated.qwenKey;
         _calorieParser = _buildParser();
       });
     }
@@ -956,7 +1075,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
                     ? AppColors.success
                     : (isDark ? Colors.white70 : Colors.black54),
               ),
-              tooltip: 'Configure Google AI API Key',
+              tooltip: 'Configure AI API Keys',
             ),
           ),
           Container(

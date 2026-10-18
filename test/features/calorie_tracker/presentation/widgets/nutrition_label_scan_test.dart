@@ -102,7 +102,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Add a Google AI key to scan nutrition labels.'),
+        find.text('Add a Claude, Gemini, or QwenCloud API key to scan nutrition labels.'),
         findsOneWidget,
       );
     });

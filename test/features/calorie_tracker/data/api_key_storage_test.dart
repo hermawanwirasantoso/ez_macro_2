@@ -55,6 +55,36 @@ void main() {
       expect(await storage.getApiKey(), isNull);
       expect(await storage.hasApiKey(), isFalse);
     });
+
+    test('saves, reads, and clears QwenCloud backup API key independently', () async {
+      final storage = InMemoryApiKeyStorage('gemini_key');
+      expect(await storage.hasQwenApiKey(), isFalse);
+
+      await storage.saveQwenApiKey('  sk-qwen-backup  ');
+      expect(await storage.getQwenApiKey(), 'sk-qwen-backup');
+      expect(await storage.hasQwenApiKey(), isTrue);
+      expect(await storage.getApiKey(), 'gemini_key');
+
+      await storage.clearQwenApiKey();
+      expect(await storage.getQwenApiKey(), isNull);
+      expect(await storage.hasQwenApiKey(), isFalse);
+      expect(await storage.getApiKey(), 'gemini_key');
+    });
+
+    test('saves, reads, and clears Claude API key independently', () async {
+      final storage = InMemoryApiKeyStorage('gemini_key', 'sk-qwen');
+      expect(await storage.hasClaudeApiKey(), isFalse);
+
+      await storage.saveClaudeApiKey('  sk-ant-claude-key  ');
+      expect(await storage.getClaudeApiKey(), 'sk-ant-claude-key');
+      expect(await storage.hasClaudeApiKey(), isTrue);
+
+      await storage.clearClaudeApiKey();
+      expect(await storage.getClaudeApiKey(), isNull);
+      expect(await storage.hasClaudeApiKey(), isFalse);
+      expect(await storage.getApiKey(), 'gemini_key');
+      expect(await storage.getQwenApiKey(), 'sk-qwen');
+    });
   });
 
   group('SecureApiKeyStorage with mock storage', () {
@@ -78,6 +108,29 @@ void main() {
       await storage.clearApiKey();
       expect(await storage.getApiKey(), isNull);
       expect(await storage.hasApiKey(), isFalse);
+    });
+
+    test('stores Claude key under its own secure storage entry', () async {
+      final storage = SecureApiKeyStorage(
+        storageKey: 'test_gemini_key',
+        claudeStorageKey: 'test_claude_key',
+        secureStorage: const FlutterSecureStorage(),
+      );
+
+      await storage.saveClaudeApiKey('sk-ant-secure-claude');
+      expect(await storage.getClaudeApiKey(), 'sk-ant-secure-claude');
+      expect(await storage.getApiKey(), isNull);
+      expect(
+        await const FlutterSecureStorage().read(key: 'test_claude_key'),
+        'sk-ant-secure-claude',
+      );
+
+      await storage.clearClaudeApiKey();
+      expect(await storage.hasClaudeApiKey(), isFalse);
+      expect(
+        await const FlutterSecureStorage().read(key: 'test_claude_key'),
+        isNull,
+      );
     });
 
     test('retains key in session cache when secure storage throws an exception', () async {

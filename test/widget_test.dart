@@ -48,6 +48,14 @@ Future<void> _tapSaveEntry(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// The key sheet is taller than the default test viewport; scroll buttons
+/// into view before tapping them.
+Future<void> _tapInSheet(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -262,13 +270,13 @@ void main() {
     await tester.tap(apiKeyButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Google AI API Key'), findsOneWidget);
+    expect(find.text('AI API Keys'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('apiKeyInputField')),
       'AIzaSyTestUserKey123',
     );
-    await tester.tap(find.byKey(const Key('saveApiKeyButton')));
+    await _tapInSheet(tester, find.byKey(const Key('saveApiKeyButton')));
     await tester.pumpAndSettle();
 
     expect(await storage.getApiKey(), 'AIzaSyTestUserKey123');
@@ -290,10 +298,10 @@ void main() {
     await tester.tap(configureBadge);
     await tester.pumpAndSettle();
 
-    expect(find.text('Google AI API Key'), findsOneWidget);
-    expect(find.text('Active Secure Key: ••••••••y999'), findsOneWidget);
+    expect(find.text('AI API Keys'), findsOneWidget);
+    expect(find.text('Gemini Secure Key: ••••••••y999'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('clearApiKeyButton')));
+    await _tapInSheet(tester, find.byKey(const Key('clearApiKeyButton')));
     await tester.pumpAndSettle();
 
     expect(await storage.getApiKey(), isNull);

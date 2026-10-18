@@ -752,5 +752,243 @@ void main() {
       expect(result.portionUnit, 'serving');
       expect(result.portionDisplay, '1 serving');
     });
+
+    test('sends thinkingConfig with thinkingLevel low for default Gemini 3 model (gemini-3.5-flash-lite)', () async {
+      Map<String, dynamic>? requestBody;
+
+      final mockClient = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        final responsePayload = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'mealLabel': 'Banana',
+                      'calories': 105,
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        };
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('banana');
+      expect(result, isNotNull);
+      expect(result!.calories, 105);
+
+      expect(requestBody, isNotNull);
+      final dynamic generationConfig = requestBody!['generationConfig'];
+      expect(generationConfig, isA<Map<String, dynamic>>());
+      final dynamic thinkingConfig = generationConfig['thinkingConfig'];
+      expect(thinkingConfig, isA<Map<String, dynamic>>());
+      expect(thinkingConfig['thinkingLevel'], 'low');
+      expect(thinkingConfig.containsKey('thinkingBudget'), isFalse);
+    });
+
+    test('sends thinkingConfig with thinkingBudget 0 for Gemini 2.x model (gemini-2.5-flash)', () async {
+      Map<String, dynamic>? requestBody;
+
+      final mockClient = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        final responsePayload = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'mealLabel': 'Apple',
+                      'calories': 95,
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        };
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        model: 'gemini-2.5-flash',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('apple');
+      expect(result, isNotNull);
+      expect(result!.calories, 95);
+
+      expect(requestBody, isNotNull);
+      final dynamic generationConfig = requestBody!['generationConfig'];
+      expect(generationConfig, isA<Map<String, dynamic>>());
+      final dynamic thinkingConfig = generationConfig['thinkingConfig'];
+      expect(thinkingConfig, isA<Map<String, dynamic>>());
+      expect(thinkingConfig['thinkingBudget'], 0);
+      expect(thinkingConfig.containsKey('thinkingLevel'), isFalse);
+    });
+
+    test('omits thinkingConfig for Gemini 1.x model (gemini-1.5-flash)', () async {
+      Map<String, dynamic>? requestBody;
+
+      final mockClient = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        final responsePayload = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'mealLabel': 'Orange',
+                      'calories': 62,
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        };
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        model: 'gemini-1.5-flash',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('orange');
+      expect(result, isNotNull);
+
+      expect(requestBody, isNotNull);
+      final dynamic generationConfig = requestBody!['generationConfig'];
+      expect(generationConfig, isA<Map<String, dynamic>>());
+      expect(generationConfig.containsKey('thinkingConfig'), isFalse);
+    });
+
+    test('supports custom thinkingConfig injected via constructor', () async {
+      Map<String, dynamic>? requestBody;
+
+      final mockClient = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        final responsePayload = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'mealLabel': 'Pear',
+                      'calories': 100,
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        };
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        thinkingConfig: const <String, Object>{'thinkingLevel': 'medium'},
+        client: mockClient,
+      );
+
+      final result = await parser.parse('pear');
+      expect(result, isNotNull);
+
+      expect(requestBody, isNotNull);
+      final dynamic generationConfig = requestBody!['generationConfig'];
+      expect(generationConfig, isA<Map<String, dynamic>>());
+      final dynamic thinkingConfig = generationConfig['thinkingConfig'];
+      expect(thinkingConfig['thinkingLevel'], 'medium');
+    });
+
+    test('defaultThinkingConfigForModel handles various Gemini generations correctly', () {
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-3.5-flash-lite'),
+        <String, Object>{'thinkingLevel': 'low'},
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-3-flash'),
+        <String, Object>{'thinkingLevel': 'low'},
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-3.8-flash'),
+        <String, Object>{'thinkingLevel': 'low'},
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-2.5-flash'),
+        <String, Object>{'thinkingBudget': 0},
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-2.0-flash'),
+        <String, Object>{'thinkingBudget': 0},
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-1.5-flash'),
+        isNull,
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('gemini-1.0-pro'),
+        isNull,
+      );
+      expect(
+        GoogleAiCalorieParser.defaultThinkingConfigForModel('non-gemini-model'),
+        isNull,
+      );
+    });
+
+    test('parses candidates with structured nested numeric value maps', () async {
+      final responsePayload = {
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': jsonEncode({
+                    'mealLabel': 'Greek Yogurt Bowl',
+                    'calories': {'value': 220, 'unit': 'kcal'},
+                    'proteinG': {'amount': 20, 'unit': 'g'},
+                    'carbsG': {'value': 15},
+                    'fatG': {'amount': 0},
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode(responsePayload), 200);
+      });
+
+      final parser = GoogleAiCalorieParser(
+        apiKey: 'test-api-key',
+        client: mockClient,
+      );
+
+      final result = await parser.parse('yogurt bowl');
+      expect(result, isNotNull);
+      expect(result!.mealLabel, 'Greek Yogurt Bowl');
+      expect(result.calories, 220);
+      expect(result.proteinG, 20);
+      expect(result.carbsG, 15);
+      expect(result.fatG, 0);
+    });
   });
 }

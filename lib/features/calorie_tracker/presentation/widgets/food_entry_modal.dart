@@ -19,11 +19,12 @@ typedef NutritionLabelParseCallback = Future<ParseResult?> Function(
 
 typedef BarcodeLookupCallback = Future<ProductInfo?> Function(String barcode);
 
-/// Modal dialog for manually creating or editing a food log entry.
+/// Modal dialog for creating or editing food log entries and reusable foods.
 class FoodEntryModal extends StatefulWidget {
   const FoodEntryModal({
     super.key,
     this.initialEntry,
+    this.initialSavedFood,
     this.initialMealType,
     this.savedFoods = const <SavedFood>[],
     this.onSaveFood,
@@ -34,9 +35,11 @@ class FoodEntryModal extends StatefulWidget {
     this.onLookupBarcode,
     this.hasConfiguredApiKey = false,
     this.recipeStorage,
-  });
+  }) : assert(initialEntry == null || initialSavedFood == null),
+       assert(initialSavedFood == null || onSaveFood != null);
 
   final FoodLogEntry? initialEntry;
+  final SavedFood? initialSavedFood;
   final MealType? initialMealType;
   final List<SavedFood> savedFoods;
   final Future<void> Function(SavedFood food)? onSaveFood;
@@ -112,6 +115,22 @@ class FoodEntryModal extends StatefulWidget {
     );
   }
 
+  static Future<SavedFood?> showEditSavedFood(
+    BuildContext context,
+    SavedFood food, {
+    required Future<void> Function(SavedFood food) onSaveFood,
+  }) {
+    return showModalBottomSheet<SavedFood>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => FoodEntryModal(
+        initialSavedFood: food,
+        onSaveFood: onSaveFood,
+      ),
+    );
+  }
+
   @override
   State<FoodEntryModal> createState() => _FoodEntryModalState();
 }
@@ -158,13 +177,14 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
   String _basePortionUnit = 'serving';
   double _currentPortionMultiplier = 1.0;
 
-  bool get _isEditing => widget.initialEntry != null;
+  bool get _isEditingSavedFood => widget.initialSavedFood != null;
+  bool get _isEditing => widget.initialEntry != null || _isEditingSavedFood;
 
   /// True when portion is a scale of a known base (edit, saved food, label, barcode).
-  /// False on a blank manual add, where the user is defining the portion.
+  /// False when adding manually or correcting a saved food's base portion.
   bool get _isScalingPortion =>
       _selectedSavedFood != null ||
-      _isEditing ||
+      widget.initialEntry != null ||
       _filledFromLabel ||
       _filledFromBarcode;
 
@@ -213,7 +233,23 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
   @override
   void initState() {
     super.initState();
-    final FoodLogEntry? entry = widget.initialEntry;
+    final SavedFood? food = widget.initialSavedFood;
+    final FoodLogEntry? entry = widget.initialEntry ??
+        (food == null
+            ? null
+            : FoodLogEntry(
+                mealLabel: food.name,
+                calories: food.calories,
+                proteinG: food.proteinG,
+                carbsG: food.carbsG,
+                fatG: food.fatG,
+                saturatedFatG: food.saturatedFatG,
+                fiberG: food.fiberG,
+                addedSugarG: food.addedSugarG,
+                sodiumMg: food.sodiumMg,
+                portionSize: food.portionSize,
+                portionUnit: food.portionUnit,
+              ));
     _nameController = TextEditingController(text: entry?.mealLabel ?? '');
     _calController =
         TextEditingController(text: entry != null ? '${entry.calories}' : '');
@@ -426,7 +462,8 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
 
     if (!widget.hasConfiguredApiKey || widget.onParseNutritionLabel == null) {
       setState(() {
-        _errorMessage = 'Add a Google AI key to scan nutrition labels.';
+        _errorMessage =
+            'Add a Claude, Gemini, or QwenCloud API key to scan nutrition labels.';
       });
       return;
     }
@@ -651,6 +688,28 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
     }
   }
 
+  Future<void> _editSavedFood(SavedFood food) async {
+    final SavedFood? updated = await FoodEntryModal.showEditSavedFood(
+      context,
+      food,
+      onSaveFood: widget.onSaveFood!,
+    );
+    if (updated == null || !mounted) return;
+
+    setState(() {
+      final int index = _savedFoods.indexWhere((SavedFood item) => item.id == updated.id);
+      if (index != -1) {
+        _savedFoods[index] = updated;
+      }
+      _errorMessage = null;
+    });
+    if (_selectedSavedFoodId == updated.id) {
+      final double multiplier = _currentPortionMultiplier;
+      _useSavedFood(updated);
+      _setPortionMultiplier(multiplier);
+    }
+  }
+
   Future<void> _onSave() async {
     if (_isSaving) return;
 
@@ -702,6 +761,57 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
       setState(() {
         _errorMessage = 'Macro values cannot be negative.';
       });
+      return;
+    }
+
+    if (_isEditingSavedFood) {
+      final double? portionSize = double.tryParse(_savePortionSizeController.text.trim());
+      final String portionUnit = _savePortionUnitController.text.trim();
+      if (portionSize == null || !portionSize.isFinite || portionSize <= 0) {
+        setState(() {
+          _errorMessage = 'Please enter a valid portion size (> 0).';
+        });
+        return;
+      }
+      if (portionUnit.isEmpty) {
+        setState(() {
+          _errorMessage = 'Please enter a portion unit.';
+        });
+        return;
+      }
+
+      final SavedFood updated = SavedFood(
+        id: widget.initialSavedFood!.id,
+        name: name,
+        calories: calories,
+        proteinG: protein,
+        carbsG: carbs,
+        fatG: fat,
+        saturatedFatG: saturatedFat,
+        fiberG: fiber,
+        addedSugarG: addedSugar,
+        sodiumMg: sodium,
+        portionSize: portionSize,
+        portionUnit: portionUnit,
+      );
+      setState(() {
+        _isSaving = true;
+        _errorMessage = null;
+      });
+      try {
+        await widget.onSaveFood!(updated);
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+            _errorMessage = 'Could not update this saved food. Please try again.';
+          });
+        }
+        return;
+      }
+      if (mounted) {
+        Navigator.of(context).pop(updated);
+      }
       return;
     }
 
@@ -880,7 +990,9 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        _isEditing ? 'Edit Meal' : 'Quick Add Food',
+                        _isEditingSavedFood
+                            ? 'Edit Saved Food'
+                            : (_isEditing ? 'Edit Meal' : 'Quick Add Food'),
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
@@ -889,9 +1001,11 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _isEditing
-                            ? 'Update calorie and macro values for this entry.'
-                            : 'Log food directly, or scan a nutrition label.',
+                        _isEditingSavedFood
+                            ? 'Correct the base serving. Past logs stay unchanged.'
+                            : (_isEditing
+                                ? 'Update calorie and macro values for this entry.'
+                                : 'Log food directly, or scan a nutrition label.'),
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
@@ -900,7 +1014,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                     ],
                   ),
                 ),
-                if (_isEditing)
+                if (widget.initialEntry != null)
                   IconButton(
                     key: const Key('deleteEntryModalButton'),
                     onPressed: _onDelete,
@@ -981,15 +1095,17 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
                             children: <Widget>[
                               Row(
                                 children: <Widget>[
-                                  Text(
-                                    _isScanningLabel
-                                        ? 'Reading label...'
-                                        : 'Scan nutrition label',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.2,
-                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                  Flexible(
+                                    child: Text(
+                                      _isScanningLabel
+                                          ? 'Reading label...'
+                                          : 'Scan nutrition label',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.2,
+                                        color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -1272,10 +1388,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
               _buildSavedFoodsSection(isDark),
             ],
 
-            if (_selectedSavedFood != null ||
-                _isEditing ||
-                _filledFromLabel ||
-                _filledFromBarcode)
+            if (_isScalingPortion)
               _portionSelectorWidget(isDark),
 
             if (_errorMessage != null) ...<Widget>[
@@ -1305,45 +1418,47 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
             const SizedBox(height: 16),
 
             // Meal Category Selector Chips
-            const Text(
-              'Meal Category',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: MealType.values.map((MealType type) {
-                  final bool isSelected = _selectedMealType == type;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      key: Key('mealTypeChip_${type.name}'),
-                      avatar: Icon(
-                        type.icon,
-                        size: 14,
-                        color: isSelected ? Colors.white : type.color,
-                      ),
-                      label: Text(type.displayName),
-                      selected: isSelected,
-                      selectedColor: type.color,
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                      ),
-                      onSelected: (bool selected) {
-                        if (selected) {
-                          setState(() {
-                            _selectedMealType = type;
-                          });
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
+            if (!_isEditingSavedFood) ...<Widget>[
+              const Text(
+                'Meal Category',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
-            ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: MealType.values.map((MealType type) {
+                    final bool isSelected = _selectedMealType == type;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        key: Key('mealTypeChip_${type.name}'),
+                        avatar: Icon(
+                          type.icon,
+                          size: 14,
+                          color: isSelected ? Colors.white : type.color,
+                        ),
+                        label: Text(type.displayName),
+                        selected: isSelected,
+                        selectedColor: type.color,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                        ),
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _selectedMealType = type;
+                            });
+                          }
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
 
             const SizedBox(height: 14),
 
@@ -1602,10 +1717,13 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
 
             if (!_isScalingPortion) ...<Widget>[
               const SizedBox(height: 14),
-              _portionDefinitionSection(isDark, title: 'Portion'),
+              _portionDefinitionSection(
+                isDark,
+                title: _isEditingSavedFood ? 'Base Portion' : 'Portion',
+              ),
             ],
 
-            if (widget.onSaveFood != null) ...<Widget>[
+            if (widget.onSaveFood != null && !_isEditingSavedFood) ...<Widget>[
               const SizedBox(height: 4),
               Container(
                 decoration: BoxDecoration(
@@ -1659,7 +1777,7 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
               children: <Widget>[
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -2124,14 +2242,27 @@ class _FoodEntryModalState extends State<FoodEntryModal> {
             color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
           ),
         ),
-        trailing: widget.onDeleteSavedFood == null
-            ? const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.primary)
-            : IconButton(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (widget.onSaveFood != null)
+              IconButton(
+                key: Key('editSavedFood_${food.id}'),
+                onPressed: () => _editSavedFood(food),
+                icon: const Icon(Icons.edit_outlined, size: 19, color: AppColors.primary),
+                tooltip: 'Edit saved food',
+              ),
+            if (widget.onDeleteSavedFood != null)
+              IconButton(
                 key: Key('deleteSavedFood_${food.id}'),
                 onPressed: () => _removeSavedFood(food),
                 icon: const Icon(Icons.delete_outline, size: 19, color: AppColors.fat),
                 tooltip: 'Remove saved food',
               ),
+            if (widget.onSaveFood == null && widget.onDeleteSavedFood == null)
+              const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.primary),
+          ],
+        ),
       ),
     );
   }
