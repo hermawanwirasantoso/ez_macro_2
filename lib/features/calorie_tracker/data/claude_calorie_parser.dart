@@ -18,12 +18,18 @@ class ClaudeCalorieParser implements CalorieParser {
     required this.apiKey,
     this.model = 'claude-haiku-5-5',
     this.baseUrl = 'https://api.anthropic.com',
-    this.effort = 'low',
+    String? effort,
     this.client,
-  });
+  }) : effort = effort ?? defaultEffortForModel(model);
 
   static const String apiVersion = '2023-06-01';
   static const String fallbackBeta = 'server-side-fallback-2026-07-01';
+
+  /// Haiku runs at `medium`: at `low` it sometimes skipped thinking and
+  /// mis-added multi-ingredient meals (e.g. oats + milk). Sonnet and Opus were
+  /// already consistent at `low`, so they stay there.
+  static String defaultEffortForModel(String model) =>
+      model.contains('haiku') ? 'medium' : 'low';
 
   /// Models that accept `fallbacks: "default"`, which re-runs a request on a
   /// recommended model server-side if a safety classifier declines it.
@@ -89,8 +95,8 @@ class ClaudeCalorieParser implements CalorieParser {
   final String model;
   final String baseUrl;
 
-  /// `output_config.effort`; null omits it for models that don't support it.
-  final String? effort;
+  /// `output_config.effort`; defaults per model via [defaultEffortForModel].
+  final String effort;
   final http.Client? client;
 
   @override
@@ -159,7 +165,7 @@ class ClaudeCalorieParser implements CalorieParser {
           <String, Object>{'role': 'user', 'content': content},
         ],
         'output_config': <String, Object>{
-          'effort': ?effort,
+          'effort': effort,
           'format': <String, Object>{
             'type': 'json_schema',
             'schema': resultSchema,
@@ -239,8 +245,9 @@ class ClaudeCalorieParser implements CalorieParser {
       }
     }
 
-    final ParseResult? result =
-        CalorieJsonParser.fromModelText(buffer.toString());
+    final ParseResult? result = CalorieJsonParser.fromModelText(
+      buffer.toString(),
+    );
     if (result == null) {
       _debugLog('Claude failed to parse content: $content');
     }

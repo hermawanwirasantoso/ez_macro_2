@@ -47,7 +47,7 @@ void main() {
 
         final Map<String, dynamic> outputConfig =
             body['output_config'] as Map<String, dynamic>;
-        expect(outputConfig['effort'], 'low');
+        expect(outputConfig['effort'], 'medium');
         final Map<String, dynamic> format =
             outputConfig['format'] as Map<String, dynamic>;
         expect(format['type'], 'json_schema');
@@ -93,28 +93,44 @@ void main() {
       expect(result.confidence, 0.95);
     });
 
-    test('opts into server-side fallbacks when overridden to Opus 5.5',
-        () async {
-      final mockClient = MockClient((request) async {
-        final Map<String, dynamic> body =
-            jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['model'], 'claude-opus-5-5');
-        expect(body['fallbacks'], 'default');
-        expect(
-          request.headers['anthropic-beta'],
-          'server-side-fallback-2026-07-01',
+    test(
+      'opts into server-side fallbacks when overridden to Opus 5.5',
+      () async {
+        final mockClient = MockClient((request) async {
+          final Map<String, dynamic> body =
+              jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['model'], 'claude-opus-5-5');
+          expect(body['fallbacks'], 'default');
+          expect((body['output_config'] as Map)['effort'], 'low');
+          expect(
+            request.headers['anthropic-beta'],
+            'server-side-fallback-2026-07-01',
+          );
+          return _messageResponse({'mealLabel': 'Apple', 'calories': 95});
+        });
+
+        final parser = ClaudeCalorieParser(
+          apiKey: 'sk-ant-key',
+          model: 'claude-opus-5-5',
+          client: mockClient,
         );
-        return _messageResponse({'mealLabel': 'Apple', 'calories': 95});
-      });
 
-      final parser = ClaudeCalorieParser(
-        apiKey: 'sk-ant-key',
-        model: 'claude-opus-5-5',
-        client: mockClient,
+        final result = await parser.parse('apple');
+        expect(result?.calories, 95);
+      },
+    );
+
+    test('defaults effort per model and honors an explicit effort', () {
+      expect(ClaudeCalorieParser(apiKey: 'k').effort, 'medium');
+      expect(
+        ClaudeCalorieParser(apiKey: 'k', model: 'claude-sonnet-5-5').effort,
+        'low',
       );
-
-      final result = await parser.parse('apple');
-      expect(result?.calories, 95);
+      expect(
+        ClaudeCalorieParser(apiKey: 'k', model: 'claude-opus-5-5').effort,
+        'low',
+      );
+      expect(ClaudeCalorieParser(apiKey: 'k', effort: 'high').effort, 'high');
     });
 
     test('uses a custom base URL', () async {

@@ -36,7 +36,7 @@ flutter run
 
 Basic logging, saved foods, recipes, barcode lookup, weight, TDEE, and backups work without a key.
 
-A [Claude API](https://platform.claude.com) key is the main AI provider. It unlocks natural-language parsing and nutrition-label photos using `claude-haiku-5-5`. Add it in the app (key icon in the app bar). Keys entered there are stored only on the device in the system keychain/keystore via `flutter_secure_storage`, are never shown again after saving (only the last 4 characters), and are sent only to their own provider.
+A [Claude API](https://platform.claude.com) key is the main AI provider. It unlocks natural-language parsing and nutrition-label photos using `claude-haiku-5-5` at medium effort. Add it in the app (key icon in the app bar). Keys entered there are stored only on the device in the system keychain/keystore via `flutter_secure_storage`, are never shown again after saving (only the last 4 characters), and are sent only to their own provider.
 
 If Claude fails or is unavailable, the app falls back to a [Google AI Studio](https://aistudio.google.com) Gemini key, then to [QwenCloud](https://home.qwencloud.com/api-keys) `deepseek-v4.1-flash` at `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`. Add those backup keys in the same API key sheet.
 
