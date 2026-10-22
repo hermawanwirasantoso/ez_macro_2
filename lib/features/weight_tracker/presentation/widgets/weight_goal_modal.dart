@@ -97,7 +97,6 @@ class _WeightGoalModalState extends State<WeightGoalModal> {
 
     final double? target = double.tryParse(_targetWeightController.text.trim());
     final double? start = double.tryParse(_startingWeightController.text.trim());
-    final double? height = double.tryParse(_heightController.text.trim());
 
     String? goalInsight;
     if (target != null && start != null && target > 0 && start > 0) {

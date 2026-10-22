@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../calorie_tracker/domain/daily_log.dart';
 import '../../calorie_tracker/domain/meal_type.dart';
 import '../../calorie_tracker/domain/saved_food.dart';
 import '../../calorie_tracker/presentation/theme/app_theme.dart';

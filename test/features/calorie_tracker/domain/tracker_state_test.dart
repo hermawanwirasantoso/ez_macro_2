@@ -116,4 +116,55 @@ void main() {
       expect(state.entries.last.mealLabel, 'Existing Snack');
     });
   });
+
+  group('CalorieTrackerState.restoreEntries', () {
+    test('puts a removed entry back at its position on the same day', () async {
+      final CalorieTrackerState state = CalorieTrackerState(storage: CalorieStorage.inMemory());
+      state.addCalories(calories: 300, mealLabel: 'Breakfast');
+      state.addCalories(calories: 600, mealLabel: 'Lunch');
+      state.addCalories(calories: 700, mealLabel: 'Dinner');
+
+      final FoodLogEntry removed = state.removeEntryAt(1)!;
+      expect(removed.mealLabel, 'Lunch');
+      expect(state.consumedCalories, 1000);
+
+      await state.restoreEntries(<FoodLogEntry>[removed], date: state.selectedDate, index: 1);
+      expect(state.entries.map((FoodLogEntry e) => e.mealLabel), <String>['Dinner', 'Lunch', 'Breakfast']);
+      expect(state.consumedCalories, 1600);
+
+      // A second undo of the same entry is ignored.
+      await state.restoreEntries(<FoodLogEntry>[removed], date: state.selectedDate, index: 1);
+      expect(state.entries, hasLength(3));
+    });
+
+    test('restores a cleared day after newer entries', () async {
+      final CalorieTrackerState state = CalorieTrackerState(storage: CalorieStorage.inMemory());
+      state.addCalories(calories: 300, mealLabel: 'Breakfast');
+      state.addCalories(calories: 600, mealLabel: 'Lunch');
+      final List<FoodLogEntry> cleared = List<FoodLogEntry>.of(state.entries);
+
+      state.clearCurrentDay();
+      state.addCalories(calories: 150, mealLabel: 'Snack');
+      await state.restoreEntries(cleared, date: state.selectedDate);
+
+      expect(state.entries.map((FoodLogEntry e) => e.mealLabel), <String>['Snack', 'Lunch', 'Breakfast']);
+      expect(state.consumedCalories, 1050);
+    });
+
+    test('writes to storage when another day is being viewed', () async {
+      final CalorieStorage storage = CalorieStorage.inMemory();
+      final DateTime today = DateTime.now();
+      final CalorieTrackerState state = CalorieTrackerState(storage: storage, selectedDate: today);
+      state.addCalories(calories: 450, mealLabel: 'Pasta');
+      final FoodLogEntry removed = state.removeEntryAt(0)!;
+      await state.saveToStorage();
+
+      await state.loadForDate(today.subtract(const Duration(days: 1)));
+      await state.restoreEntries(<FoodLogEntry>[removed], date: today, index: 0);
+
+      expect(state.entries, isEmpty);
+      final DailyLog? todayLog = await storage.loadDayLog(today);
+      expect(todayLog!.entries.single.mealLabel, 'Pasta');
+    });
+  });
 }

@@ -60,7 +60,7 @@ class _TdeeCalculatorScreenState extends State<TdeeCalculatorScreen> {
   late final TextEditingController _heightController;
   late final TextEditingController _weightController;
 
-  WeightUnit _weightUnit = WeightUnit.kg;
+  final WeightUnit _weightUnit = WeightUnit.kg;
   ActivityLevel _activityLevel = ActivityLevel.moderate;
   FitnessGoal _goal = FitnessGoal.cut;
   MacroSplitPreference _macroSplit = MacroSplitPreference.highProtein;
@@ -126,7 +126,6 @@ class _TdeeCalculatorScreenState extends State<TdeeCalculatorScreen> {
 
     if (widget.weightStorage != null) {
       // Save starting goal and initial entry
-      final WeightGoal? existingGoal = await widget.weightStorage!.loadGoal();
       final double targetWeightKg = _goal == FitnessGoal.cut
           ? (weightKg - 5.0).clamp(30.0, 300.0)
           : (_goal == FitnessGoal.bulk ? weightKg + 5.0 : weightKg);

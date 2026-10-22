@@ -91,7 +91,7 @@ class BackupService {
     final List<DailyLog> dailyLogs = await calorieStorage.loadAllLogs();
     final List<SavedFood> savedFoods = await calorieStorage.loadSavedFoods();
     final List<WeightEntry> weightEntries = await weightStorage.loadEntries();
-    final WeightGoal? weightGoal = await weightStorage.loadGoal();
+    final WeightGoal weightGoal = await weightStorage.loadGoal();
     final List<Recipe> recipes = recipeStorage != null
         ? await recipeStorage.loadRecipes()
         : <Recipe>[];

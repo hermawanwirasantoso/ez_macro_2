@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ez_macro_2/features/weight_tracker/data/weight_storage.dart';
 import 'package:ez_macro_2/features/weight_tracker/domain/weight_entry.dart';
-import 'package:ez_macro_2/features/weight_tracker/domain/weight_goal.dart';
-import 'package:ez_macro_2/features/weight_tracker/domain/weight_unit.dart';
 import 'package:ez_macro_2/features/weight_tracker/presentation/weight_tracker_page.dart';
 import 'package:ez_macro_2/main.dart';
 

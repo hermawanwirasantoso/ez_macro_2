@@ -474,12 +474,42 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     });
   }
 
+  /// [index] is a position in [CalorieTrackerState.filteredEntries], which is
+  /// what the food log shows.
   void _removeEntry(int index) {
+    if (index < 0 || index >= _trackerState.filteredEntries.length) return;
+    _removeEntryWithUndo(_trackerState.filteredEntries[index]);
+  }
+
+  void _removeEntryWithUndo(FoodLogEntry entry) {
+    final int position = _trackerState.entries.indexWhere((FoodLogEntry e) => e.id == entry.id);
+    if (position == -1) return;
+    final DateTime day = _trackerState.selectedDate;
+
     setState(() {
-      _trackerState.removeEntryAt(index);
+      _trackerState.removeEntryAt(position);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Entry removed. Totals updated.')),
+    _showUndoSnackBar(
+      'Removed ${entry.mealLabel}.',
+      () => _trackerState.restoreEntries(<FoodLogEntry>[entry], date: day, index: position),
+    );
+  }
+
+  void _showUndoSnackBar(String message, Future<void> Function() undo) {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          key: const Key('undoRemoveButton'),
+          label: 'Undo',
+          onPressed: () async {
+            await undo();
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
     );
   }
 
@@ -585,12 +615,7 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     if (result == null || !mounted) return;
 
     if (result == 'delete') {
-      setState(() {
-        _trackerState.removeEntryById(target.id);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entry deleted.')),
-      );
+      _removeEntryWithUndo(target);
     } else if (result is FoodLogEntry) {
       final int originalIndex = _trackerState.entries.indexWhere((FoodLogEntry e) => e.id == target.id);
       if (originalIndex != -1) {
@@ -671,11 +696,14 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
     );
 
     if (confirmed == true && mounted) {
+      final List<FoodLogEntry> cleared = List<FoodLogEntry>.of(_trackerState.entries);
+      final DateTime day = _trackerState.selectedDate;
       setState(() {
         _trackerState.clearCurrentDay();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Day log cleared.')),
+      _showUndoSnackBar(
+        'Day log cleared.',
+        () => _trackerState.restoreEntries(cleared, date: day),
       );
     }
   }

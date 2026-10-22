@@ -55,13 +55,14 @@ class _WeightTrackerPageState extends State<WeightTrackerPage> {
       defaultWeight: _trackerState.currentWeight,
     );
 
-    if (result is WeightEntry && mounted) {
-      await _trackerState.addEntry(result);
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logged ${result.displayWeight}.')),
-      );
-    }
+    if (result is! WeightEntry || !mounted) return;
+
+    await _trackerState.addEntry(result);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Logged ${result.displayWeight}.')),
+    );
   }
 
   Future<void> _openEditModal(WeightEntry entry) async {
@@ -75,12 +76,14 @@ class _WeightTrackerPageState extends State<WeightTrackerPage> {
 
     if (result == 'delete') {
       await _trackerState.deleteEntry(entry.id);
+      if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Weigh-in deleted.')),
       );
     } else if (result is WeightEntry) {
       await _trackerState.editEntry(result);
+      if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Updated to ${result.displayWeight}.')),
@@ -95,13 +98,14 @@ class _WeightTrackerPageState extends State<WeightTrackerPage> {
       latestWeight: _trackerState.currentWeight,
     );
 
-    if (updated != null && mounted) {
-      await _trackerState.setGoal(updated);
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Weight goal updated.')),
-      );
-    }
+    if (updated == null || !mounted) return;
+
+    await _trackerState.setGoal(updated);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Weight goal updated.')),
+    );
   }
 
   @override
@@ -477,7 +481,7 @@ class _WeightTrackerPageState extends State<WeightTrackerPage> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: entries.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (BuildContext context, int index) {
               final WeightEntry entry = entries[index];
               // Calculate delta relative to the entry logged chronologically before this one

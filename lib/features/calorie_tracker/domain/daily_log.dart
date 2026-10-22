@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import 'meal_type.dart';
+import '../../../core/unique_id.dart';
 
 /// Represents a single food or drink entry in the calorie log.
 class FoodLogEntry {
@@ -23,7 +24,7 @@ class FoodLogEntry {
     this.spreadPercent,
     MealType? mealType,
     DateTime? timestamp,
-  })  : id = id ?? _generateId(),
+  })  : id = id ?? uniqueId(),
         mealType = mealType ?? MealType.forTime(timestamp),
         timestamp = timestamp ?? DateTime.now();
 
@@ -44,13 +45,6 @@ class FoodLogEntry {
   final double? spreadPercent;
   final MealType mealType;
   final DateTime timestamp;
-
-  static int _idSequence = 0;
-
-  static String _generateId() {
-    _idSequence = (_idSequence + 1) % 1000000;
-    return '${DateTime.now().microsecondsSinceEpoch}_${_idSequence.toString().padLeft(6, '0')}';
-  }
 
   String get portionDisplay {
     final String sizeStr = portionSize == portionSize.toInt().toDouble()

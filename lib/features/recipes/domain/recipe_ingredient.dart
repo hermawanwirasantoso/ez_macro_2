@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../../calorie_tracker/domain/saved_food.dart';
+import '../../../core/unique_id.dart';
 
 /// Represents an individual ingredient within a recipe with nutrient values and portion size.
 class RecipeIngredient {
@@ -17,7 +18,7 @@ class RecipeIngredient {
     this.portionSize = 1.0,
     this.portionUnit = 'serving',
     this._baseFood,
-  }) : id = id ?? _generateId();
+  }) : id = id ?? uniqueId('ing');
 
   final String id;
   final String name;
@@ -32,10 +33,6 @@ class RecipeIngredient {
   final double portionSize;
   final String portionUnit;
   final SavedFood? _baseFood;
-
-  static String _generateId() {
-    return 'ing_${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
-  }
 
   /// The reference nutrition this ingredient is scaled from (e.g. a saved food's "100 g = 165 kcal").
   /// Rescaling from it instead of the already-rounded totals keeps macros accurate across edits.

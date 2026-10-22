@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import 'weight_unit.dart';
+import '../../../core/unique_id.dart';
 
 /// Represents a single recorded body weight measurement.
 class WeightEntry {
@@ -13,7 +14,7 @@ class WeightEntry {
     this.note,
     this.bodyFatPercentage,
     DateTime? createdAt,
-  })  : id = id ?? _generateId(),
+  })  : id = id ?? uniqueId('weight'),
         createdAt = createdAt ?? DateTime.now();
 
   final String id;
@@ -23,10 +24,6 @@ class WeightEntry {
   final String? note;
   final double? bodyFatPercentage;
   final DateTime createdAt;
-
-  static String _generateId() {
-    return 'weight_${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
-  }
 
   /// Formatted weight with 1 decimal place, e.g. "72.4 kg".
   String get displayWeight => '${weight.toStringAsFixed(1)} ${unit.displayName}';

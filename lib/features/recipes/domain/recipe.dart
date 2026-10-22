@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../../calorie_tracker/domain/daily_log.dart';
 import '../../calorie_tracker/domain/meal_type.dart';
 import 'recipe_ingredient.dart';
+import '../../../core/unique_id.dart';
 
 /// Represents a multi-ingredient recipe with batch yield and computed per-serving macros.
 class Recipe {
@@ -13,7 +14,7 @@ class Recipe {
     List<RecipeIngredient>? ingredients,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : id = id ?? _generateId(),
+  })  : id = id ?? uniqueId('rcp'),
         servings = servings <= 0 ? 1 : servings,
         ingredients = ingredients ?? <RecipeIngredient>[],
         createdAt = createdAt ?? DateTime.now(),
@@ -26,10 +27,6 @@ class Recipe {
   final List<RecipeIngredient> ingredients;
   final DateTime createdAt;
   final DateTime updatedAt;
-
-  static String _generateId() {
-    return 'rcp_${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
-  }
 
   // --- Total Batch Macros ---
 

@@ -341,6 +341,49 @@ class CalorieTrackerState {
     saveToStorage();
   }
 
+  /// Puts [removed] entries back on [date], the day they were removed from,
+  /// starting at [index] (the end of the list when null). Entries whose id is
+  /// already present are skipped, so a repeated undo is harmless. When another
+  /// day is being viewed, the change is written straight to storage.
+  Future<void> restoreEntries(
+    List<FoodLogEntry> removed, {
+    required DateTime date,
+    int? index,
+  }) async {
+    final String key = DailyLog.formatDateKey(date);
+    if (key == dateKey) {
+      final Set<String> present = entries.map((FoodLogEntry e) => e.id).toSet();
+      final List<FoodLogEntry> missing =
+          removed.where((FoodLogEntry e) => !present.contains(e.id)).toList();
+      if (missing.isEmpty) return;
+      entries.insertAll((index ?? entries.length).clamp(0, entries.length), missing);
+      _recalculateTotals();
+      await saveToStorage();
+      return;
+    }
+
+    if (storage == null) return;
+    try {
+      final DailyLog log = await storage!.loadDayLog(date) ??
+          DailyLog(
+            dateString: key,
+            dailyGoal: dailyGoal,
+            targetProteinG: targetProteinG,
+            targetCarbsG: targetCarbsG,
+            targetFatG: targetFatG,
+          );
+      final Set<String> present = log.entries.map((FoodLogEntry e) => e.id).toSet();
+      final List<FoodLogEntry> missing =
+          removed.where((FoodLogEntry e) => !present.contains(e.id)).toList();
+      if (missing.isEmpty) return;
+      log.entries.insertAll((index ?? log.entries.length).clamp(0, log.entries.length), missing);
+      await storage!.saveDayLog(log);
+      await refreshStreak();
+    } catch (_) {
+      // Non-blocking fallback
+    }
+  }
+
   void setMealFilter(MealType? filter) {
     selectedMealFilter = filter;
   }

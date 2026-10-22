@@ -151,7 +151,7 @@ void main() {
     // Weight goal was initialized
     final goal = await weightStorage.loadGoal();
     expect(goal, isNotNull);
-    expect(goal!.startingWeight, 75.0);
+    expect(goal.startingWeight, 75.0);
   });
 
   testWidgets('Skip button marks onboarding completed without changing default targets',

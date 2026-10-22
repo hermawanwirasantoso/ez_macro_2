@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'daily_log.dart';
 import 'meal_type.dart';
+import '../../../core/unique_id.dart';
 
 /// A reusable food saved by the user for quick logging later.
 class SavedFood {
@@ -19,7 +20,7 @@ class SavedFood {
     this.portionSize = 1.0,
     this.portionUnit = 'serving',
     DateTime? updatedAt,
-  })  : id = id ?? _generateId(),
+  })  : id = id ?? uniqueId(),
         updatedAt = updatedAt ?? DateTime.now();
 
   final String id;
@@ -35,10 +36,6 @@ class SavedFood {
   final double portionSize;
   final String portionUnit;
   final DateTime updatedAt;
-
-  static String _generateId() {
-    return '${DateTime.now().microsecondsSinceEpoch}_${DateTime.now().microsecond}';
-  }
 
   /// Formatted portion label (e.g., "1 serving", "100 g", "1.5 cups", "2 servings").
   String get portionDisplay {

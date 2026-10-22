@@ -242,8 +242,8 @@ class _WeightChartWidgetState extends State<WeightChartWidget> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: <Widget>[
           _buildStatPill('Average', avg != null ? '${avg.toStringAsFixed(1)} ${unit.displayName}' : '--', isDark),
-          _buildStatPill('Min', min != null ? '${min.toStringAsFixed(1)}' : '--', isDark),
-          _buildStatPill('Max', max != null ? '${max.toStringAsFixed(1)}' : '--', isDark),
+          _buildStatPill('Min', min != null ? min.toStringAsFixed(1) : '--', isDark),
+          _buildStatPill('Max', max != null ? max.toStringAsFixed(1) : '--', isDark),
           _buildStatPill(
             'Period Change',
             change != null
