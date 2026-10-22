@@ -73,9 +73,11 @@ void main() {
 
     expect(find.byKey(const Key('addIngredientSheetTitle')), findsOneWidget);
 
-    // Select Saved Food
+    // Select Saved Food and keep its default amount (1 scoop)
     expect(find.byKey(const Key('savedFoodItem_0')), findsOneWidget);
     await tester.tap(find.byKey(const Key('savedFoodItem_0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmIngredientAmountBtn')));
     await tester.pumpAndSettle();
 
     // Verify ingredient is in list
@@ -394,9 +396,169 @@ void main() {
     expect(find.byKey(const Key('savedFoodItem_0')), findsOneWidget);
     await tester.tap(find.byKey(const Key('savedFoodItem_0')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmIngredientAmountBtn')));
+    await tester.pumpAndSettle();
 
     // Verify ingredient is added
     expect(find.text('Chicken Breast'), findsOneWidget);
+  });
+
+  testWidgets('RecipeBuilderModal lets each ingredient amount be set in grams and rescales macros',
+      (WidgetTester tester) async {
+    final InMemoryRecipeStorage recipeStorage = InMemoryRecipeStorage();
+
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (BuildContext context) => ElevatedButton(
+              onPressed: () => RecipeBuilderModal.show(
+                context,
+                recipeStorage: recipeStorage,
+                savedFoods: <SavedFood>[
+                  SavedFood(
+                    name: 'Chicken Breast',
+                    calories: 165,
+                    proteinG: 31,
+                    carbsG: 0,
+                    fatG: 4,
+                    portionSize: 100,
+                    portionUnit: 'g',
+                  ),
+                ],
+              ),
+              child: const Text('Open Builder'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Builder'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('recipeNameInput')), 'Chicken Prep');
+
+    await tester.tap(find.byKey(const Key('addIngredientButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('savedFoodItem_0')));
+    await tester.pumpAndSettle();
+
+    // Amount dialog starts at the saved food's 100 g and previews the chosen amount
+    expect(find.text('How much goes into this recipe?'), findsOneWidget);
+    expect(find.text('🔥 165 kcal • 31g P • 0g C • 4g F'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('ingredientAmountDialogInput')), '250');
+    await tester.pumpAndSettle();
+    expect(find.text('🔥 413 kcal • 78g P • 0g C • 10g F'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('confirmIngredientAmountBtn')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Batch total: 413 kcal'), findsOneWidget);
+    final TextField amountField =
+        tester.widget<TextField>(find.byKey(const Key('ingredientAmountInput_0')));
+    expect(amountField.controller!.text, '250');
+
+    // Editing the inline amount rescales from the saved food, without rounding drift
+    await tester.enterText(find.byKey(const Key('ingredientAmountInput_0')), '1');
+    await tester.pumpAndSettle();
+    expect(find.text('2 kcal • 0g P • 0g C • 0g F'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('ingredientAmountInput_0')), '150,5');
+    await tester.pumpAndSettle();
+    expect(find.text('248 kcal • 47g P • 0g C • 6g F'), findsOneWidget);
+
+    // An empty amount blocks saving
+    await tester.enterText(find.byKey(const Key('ingredientAmountInput_0')), '');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saveRecipeSubmitButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter an amount for Chicken Breast'), findsOneWidget);
+    expect(await recipeStorage.loadRecipes(), isEmpty);
+
+    await tester.enterText(find.byKey(const Key('ingredientAmountInput_0')), '200');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saveRecipeSubmitButton')));
+    await tester.pumpAndSettle();
+
+    final List<Recipe> saved = await recipeStorage.loadRecipes();
+    expect(saved.length, 1);
+    final RecipeIngredient chicken = saved.first.ingredients.single;
+    expect(chicken.portionSize, 200);
+    expect(chicken.portionUnit, 'g');
+    expect(chicken.calories, 330);
+    expect(chicken.proteinG, 62);
+    expect(chicken.baseFood.portionSize, 100);
+  });
+
+  testWidgets('RecipeBuilderModal rescales ingredients of an existing recipe',
+      (WidgetTester tester) async {
+    final InMemoryRecipeStorage recipeStorage = InMemoryRecipeStorage();
+
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final Recipe initialRecipe = Recipe(
+      id: 'rice_r',
+      name: 'Rice Bowl',
+      ingredients: <RecipeIngredient>[
+        RecipeIngredient(
+          name: 'Cooked Rice',
+          calories: 130,
+          proteinG: 3,
+          carbsG: 28,
+          fatG: 0,
+          portionSize: 100,
+          portionUnit: 'g',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (BuildContext context) => ElevatedButton(
+              onPressed: () => RecipeBuilderModal.show(
+                context,
+                recipeStorage: recipeStorage,
+                initialRecipe: initialRecipe,
+              ),
+              child: const Text('Open Builder'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Builder'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Batch total: 130 kcal'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('ingredientAmountInput_0')), '300');
+    await tester.pumpAndSettle();
+    expect(find.text('Batch total: 390 kcal'), findsOneWidget);
+    expect(find.text('390 kcal • 9g P • 84g C • 0g F'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('saveRecipeSubmitButton')));
+    await tester.pumpAndSettle();
+
+    final List<Recipe> saved = await recipeStorage.loadRecipes();
+    expect(saved.single.id, 'rice_r');
+    expect(saved.single.ingredients.single.portionSize, 300);
+    expect(saved.single.totalCalories, 390);
   });
 
   testWidgets('RecipeBuilderModal ingredient search filters added ingredients',

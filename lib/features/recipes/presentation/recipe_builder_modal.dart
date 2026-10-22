@@ -5,6 +5,15 @@ import '../data/recipe_storage.dart';
 import '../domain/recipe.dart';
 import '../domain/recipe_ingredient.dart';
 
+/// Formats an ingredient amount for an input field (e.g. 250 -> "250", 1.5 -> "1.5").
+String _formatAmount(double value) {
+  if (value == value.roundToDouble()) return '${value.toInt()}';
+  return value.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+}
+
+/// Parses a typed amount, accepting both "1.5" and "1,5".
+double? _parseAmount(String text) => double.tryParse(text.trim().replaceAll(',', '.'));
+
 /// Bottom sheet modal for creating or editing a multi-ingredient recipe.
 class RecipeBuilderModal extends StatefulWidget {
   const RecipeBuilderModal({
@@ -47,6 +56,8 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
   String _ingredientSearchQuery = '';
   late int _servings;
   late List<RecipeIngredient> _ingredients;
+  // Amount inputs, index-aligned with _ingredients.
+  late List<TextEditingController> _amountControllers;
   bool _isSaving = false;
 
   @override
@@ -58,6 +69,9 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
     _ingredients = widget.initialRecipe != null
         ? List<RecipeIngredient>.from(widget.initialRecipe!.ingredients)
         : <RecipeIngredient>[];
+    _amountControllers = _ingredients
+        .map((RecipeIngredient i) => TextEditingController(text: _formatAmount(i.portionSize)))
+        .toList();
   }
 
   @override
@@ -65,6 +79,9 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
     _nameController.dispose();
     _descController.dispose();
     _ingredientSearchController.dispose();
+    for (final TextEditingController controller in _amountControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -89,12 +106,31 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
   void _addIngredient(RecipeIngredient ingredient) {
     setState(() {
       _ingredients.add(ingredient);
+      _amountControllers.add(TextEditingController(text: _formatAmount(ingredient.portionSize)));
     });
   }
 
   void _removeIngredient(int index) {
+    final TextEditingController controller = _amountControllers[index];
     setState(() {
       _ingredients.removeAt(index);
+      _amountControllers.removeAt(index);
+    });
+    // The field still holds the controller until this frame rebuilds.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  }
+
+  bool _hasValidAmount(int index) {
+    final double? amount = _parseAmount(_amountControllers[index].text);
+    return amount != null && amount > 0;
+  }
+
+  void _onAmountChanged(int index, String value) {
+    final double? amount = _parseAmount(value);
+    setState(() {
+      if (amount != null && amount > 0) {
+        _ingredients[index] = _ingredients[index].withAmount(amount);
+      }
     });
   }
 
@@ -124,6 +160,15 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
         const SnackBar(content: Text('Please add at least one ingredient')),
       );
       return;
+    }
+
+    for (int i = 0; i < _ingredients.length; i++) {
+      if (!_hasValidAmount(i)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enter an amount for ${_ingredients[i].name}')),
+        );
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
@@ -356,6 +401,16 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                         ),
                       ],
                     ),
+                    if (_ingredients.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Set how much of each ingredient goes in — macros rescale automatically.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
 
                     if (_ingredients.length >= 3 || _ingredientSearchQuery.isNotEmpty) ...<Widget>[
@@ -489,8 +544,10 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                             final int index = entry.key;
                             final RecipeIngredient ing = entry.value;
                             return Container(
+                              // Keeps each row's field state attached to its own controller while filtering.
+                              key: ObjectKey(_amountControllers[index]),
                               margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
                               decoration: BoxDecoration(
                                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                                 borderRadius: BorderRadius.circular(14),
@@ -501,8 +558,8 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                               child: Row(
                                 children: <Widget>[
                                   Container(
-                                    width: 36,
-                                    height: 36,
+                                    width: 28,
+                                    height: 28,
                                     decoration: BoxDecoration(
                                       color: AppColors.primary.withValues(alpha: 0.12),
                                       shape: BoxShape.circle,
@@ -511,13 +568,14 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                                       child: Text(
                                         '${index + 1}',
                                         style: const TextStyle(
+                                          fontSize: 12,
                                           fontWeight: FontWeight.w800,
                                           color: AppColors.primaryLight,
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -532,7 +590,8 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '${ing.portionDisplay} • ${ing.calories} kcal • ${ing.proteinG}g P • ${ing.carbsG}g C • ${ing.fatG}g F',
+                                          '${ing.calories} kcal • ${ing.proteinG}g P • ${ing.carbsG}g C • ${ing.fatG}g F',
+                                          key: Key('ingredientMacrosText_$index'),
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
@@ -541,9 +600,15 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 100,
+                                    child: _buildAmountField(index, ing, isDark),
+                                  ),
                                   IconButton(
                                     key: Key('deleteIngredientBtn_$index'),
                                     icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                    visualDensity: VisualDensity.compact,
                                     onPressed: () => _removeIngredient(index),
                                   ),
                                 ],
@@ -588,6 +653,49 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAmountField(int index, RecipeIngredient ing, bool isDark) {
+    final bool isValid = _hasValidAmount(index);
+    final Color borderColor = isValid
+        ? (isDark ? AppColors.darkBorder : AppColors.lightBorder)
+        : Colors.redAccent;
+
+    return TextField(
+      key: Key('ingredientAmountInput_$index'),
+      controller: _amountControllers[index],
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textAlign: TextAlign.end,
+      onChanged: (String value) => _onAmountChanged(index, value),
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        suffixText: ing.portionUnit.trim().isEmpty ? 'serving' : ing.portionUnit.trim(),
+        suffixStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: AppColors.primary,
+        ),
+        filled: true,
+        fillColor: isDark ? Colors.black26 : Colors.black.withValues(alpha: 0.04),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(
+            color: isValid ? AppColors.primary : Colors.redAccent,
+            width: 1.5,
           ),
         ),
       ),
@@ -739,7 +847,8 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
     final int p = int.tryParse(_proteinController.text.trim()) ?? 0;
     final int c = int.tryParse(_carbsController.text.trim()) ?? 0;
     final int f = int.tryParse(_fatController.text.trim()) ?? 0;
-    final double portionSize = double.tryParse(_portionSizeController.text.trim()) ?? 1.0;
+    final double? parsedSize = _parseAmount(_portionSizeController.text);
+    final double portionSize = parsedSize != null && parsedSize > 0 ? parsedSize : 1.0;
     final String portionUnit = _portionUnitController.text.trim().isEmpty ? 'serving' : _portionUnitController.text.trim();
 
     widget.onIngredientAdded(
@@ -753,6 +862,17 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
         portionUnit: portionUnit,
       ),
     );
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _addSavedFood(SavedFood food) async {
+    final double? amount = await showDialog<double>(
+      context: context,
+      builder: (BuildContext ctx) => _IngredientAmountDialog(food: food),
+    );
+    if (amount == null || !mounted) return;
+
+    widget.onIngredientAdded(RecipeIngredient.fromSavedFood(food).withAmount(amount));
     Navigator.of(context).pop();
   }
 
@@ -962,10 +1082,7 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         trailing: const Icon(Icons.add_circle_rounded, color: AppColors.primary),
-                        onTap: () {
-                          widget.onIngredientAdded(RecipeIngredient.fromSavedFood(food));
-                          Navigator.of(context).pop();
-                        },
+                        onTap: () => _addSavedFood(food),
                       ),
                     );
                   },
@@ -990,6 +1107,14 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'Enter the nutrition for the amount below. You can change the amount in the recipe later.',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+          ),
+        ),
         const SizedBox(height: 12),
         Row(
           children: <Widget>[
@@ -997,7 +1122,7 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
               child: TextField(
                 key: const Key('customIngredientPortionSizeInput'),
                 controller: _portionSizeController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: 'Amount',
                   filled: true,
@@ -1099,6 +1224,133 @@ class _AddIngredientSheetState extends State<_AddIngredientSheet>
             ),
             child: const Text('Add to Recipe', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Asks how much of a saved food goes into the recipe; pops with the chosen amount.
+class _IngredientAmountDialog extends StatefulWidget {
+  const _IngredientAmountDialog({required this.food});
+
+  final SavedFood food;
+
+  @override
+  State<_IngredientAmountDialog> createState() => _IngredientAmountDialogState();
+}
+
+class _IngredientAmountDialogState extends State<_IngredientAmountDialog> {
+  late final TextEditingController _amountController;
+  late final RecipeIngredient _ingredient;
+
+  String get _unit => widget.food.portionUnit.trim().isEmpty ? 'serving' : widget.food.portionUnit.trim();
+
+  double? get _amount {
+    final double? parsed = _parseAmount(_amountController.text);
+    return parsed != null && parsed > 0 ? parsed : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ingredient = RecipeIngredient.fromSavedFood(widget.food);
+    final String initial = _formatAmount(widget.food.portionSize > 0 ? widget.food.portionSize : 1.0);
+    // Pre-select so typing replaces the default amount.
+    _amountController = TextEditingController(text: initial)
+      ..selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final double? amount = _amount;
+    if (amount == null) return;
+    Navigator.of(context).pop(amount);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final double? amount = _amount;
+    final RecipeIngredient? preview = amount != null ? _ingredient.withAmount(amount) : null;
+
+    return AlertDialog(
+      title: Text(widget.food.name),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'How much goes into this recipe?',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('ingredientAmountDialogInput'),
+            controller: _amountController,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.center,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _confirm(),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              suffixText: _unit,
+              suffixStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+              errorText: amount == null ? 'Enter an amount greater than 0' : null,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black12,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              preview != null
+                  ? '🔥 ${preview.calories} kcal • ${preview.proteinG}g P • ${preview.carbsG}g C • ${preview.fatG}g F'
+                  : '—',
+              key: const Key('ingredientAmountDialogPreview'),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Label: ${widget.food.portionDisplay} = ${widget.food.calories} kcal',
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          key: const Key('confirmIngredientAmountBtn'),
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+          onPressed: amount != null ? _confirm : null,
+          child: const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         ),
       ],
     );

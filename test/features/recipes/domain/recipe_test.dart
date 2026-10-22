@@ -46,6 +46,67 @@ void main() {
       expect(ing.portionDisplay, '2 scoops');
     });
 
+    test('withAmount rescales from the saved food without compounding rounding', () {
+      final SavedFood chicken = SavedFood(
+        name: 'Chicken Breast',
+        calories: 165,
+        proteinG: 31,
+        carbsG: 0,
+        fatG: 4,
+        portionSize: 100,
+        portionUnit: 'g',
+      );
+
+      final RecipeIngredient tiny = RecipeIngredient.fromSavedFood(chicken).withAmount(1);
+      expect(tiny.calories, 2);
+      expect(tiny.proteinG, 0);
+
+      final RecipeIngredient big = tiny.withAmount(250);
+      expect(big.portionSize, 250);
+      expect(big.portionDisplay, '250 g');
+      expect(big.calories, 413);
+      expect(big.proteinG, 78);
+      expect(big.fatG, 10);
+      expect(big.id, tiny.id);
+    });
+
+    test('withAmount on an ingredient without a base food uses its own values as reference', () {
+      final RecipeIngredient rice = RecipeIngredient(
+        name: 'Cooked Rice',
+        calories: 130,
+        carbsG: 28,
+        portionSize: 100,
+        portionUnit: 'g',
+      );
+
+      final RecipeIngredient scaled = rice.withAmount(5).withAmount(300);
+      expect(scaled.calories, 390);
+      expect(scaled.carbsG, 84);
+      expect(scaled.baseFood.portionSize, 100);
+    });
+
+    test('serializes base food to and from JSON, and loads ingredients saved without one', () {
+      final RecipeIngredient ing = RecipeIngredient.fromSavedFood(
+        SavedFood(name: 'Oats', calories: 380, proteinG: 13, carbsG: 68, fatG: 7, portionSize: 100, portionUnit: 'g'),
+      ).withAmount(60);
+
+      final RecipeIngredient restored = RecipeIngredient.fromJson(ing.toJson());
+      expect(restored.calories, 228);
+      expect(restored.baseFood.portionSize, 100);
+      expect(restored.baseFood.calories, 380);
+      expect(restored.withAmount(80).calories, 304);
+
+      final RecipeIngredient legacy = RecipeIngredient.fromMap(<String, dynamic>{
+        'name': 'Honey',
+        'calories': 60,
+        'carbsG': 17,
+        'portionSize': 20,
+        'portionUnit': 'g',
+      });
+      expect(legacy.toMap().containsKey('baseFood'), isFalse);
+      expect(legacy.withAmount(40).calories, 120);
+    });
+
     test('serializes to and from JSON', () {
       final RecipeIngredient ing = RecipeIngredient(
         name: 'Peanut Butter',

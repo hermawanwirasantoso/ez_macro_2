@@ -589,6 +589,21 @@ class _RecipeListModalState extends State<RecipeListModal> {
                 ),
               ],
             ),
+            if (recipe.ingredients.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                recipe.ingredients
+                    .map((RecipeIngredient ing) => '${ing.name} ${ing.portionDisplay}')
+                    .join(' • '),
+                key: Key('recipeIngredientsSummary_$index'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
 
             // Per Serving Macro Badges Row

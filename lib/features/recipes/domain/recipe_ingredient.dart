@@ -16,6 +16,7 @@ class RecipeIngredient {
     this.sodiumMg = 0,
     this.portionSize = 1.0,
     this.portionUnit = 'serving',
+    this._baseFood,
   }) : id = id ?? _generateId();
 
   final String id;
@@ -30,10 +31,30 @@ class RecipeIngredient {
   final int sodiumMg;
   final double portionSize;
   final String portionUnit;
+  final SavedFood? _baseFood;
 
   static String _generateId() {
     return 'ing_${DateTime.now().microsecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
   }
+
+  /// The reference nutrition this ingredient is scaled from (e.g. a saved food's "100 g = 165 kcal").
+  /// Rescaling from it instead of the already-rounded totals keeps macros accurate across edits.
+  /// Ingredients without one (custom or older recipes) use their own values as the reference.
+  SavedFood get baseFood =>
+      _baseFood ??
+      SavedFood(
+        name: name,
+        calories: calories,
+        proteinG: proteinG,
+        carbsG: carbsG,
+        fatG: fatG,
+        saturatedFatG: saturatedFatG,
+        fiberG: fiberG,
+        addedSugarG: addedSugarG,
+        sodiumMg: sodiumMg,
+        portionSize: portionSize,
+        portionUnit: portionUnit,
+      );
 
   /// Creates a recipe ingredient from a [SavedFood], optionally specifying a portion quantity.
   factory RecipeIngredient.fromSavedFood(SavedFood food, {double multiplier = 1.0}) {
@@ -50,6 +71,30 @@ class RecipeIngredient {
       sodiumMg: (food.sodiumMg * scale).round(),
       portionSize: food.portionSize * scale,
       portionUnit: food.portionUnit,
+      baseFood: food,
+    );
+  }
+
+  /// Creates a copy of this ingredient set to [amount] (in [portionUnit]), with macros
+  /// rescaled from [baseFood].
+  RecipeIngredient withAmount(double amount) {
+    final SavedFood base = baseFood;
+    final double size = amount <= 0 ? 0.0 : amount;
+    final double factor = base.portionSize > 0 ? size / base.portionSize : 0.0;
+    return RecipeIngredient(
+      id: id,
+      name: name,
+      calories: (base.calories * factor).round(),
+      proteinG: (base.proteinG * factor).round(),
+      carbsG: (base.carbsG * factor).round(),
+      fatG: (base.fatG * factor).round(),
+      saturatedFatG: (base.saturatedFatG * factor).round(),
+      fiberG: (base.fiberG * factor).round(),
+      addedSugarG: (base.addedSugarG * factor).round(),
+      sodiumMg: (base.sodiumMg * factor).round(),
+      portionSize: size,
+      portionUnit: portionUnit,
+      baseFood: base,
     );
   }
 
@@ -76,21 +121,7 @@ class RecipeIngredient {
   /// Creates a copy of this ingredient scaled by [multiplier].
   RecipeIngredient scaledBy(double multiplier) {
     if ((multiplier - 1.0).abs() < 0.001) return this;
-    final double factor = multiplier <= 0 ? 0.0 : multiplier;
-    return RecipeIngredient(
-      id: id,
-      name: name,
-      calories: (calories * factor).round(),
-      proteinG: (proteinG * factor).round(),
-      carbsG: (carbsG * factor).round(),
-      fatG: (fatG * factor).round(),
-      saturatedFatG: (saturatedFatG * factor).round(),
-      fiberG: (fiberG * factor).round(),
-      addedSugarG: (addedSugarG * factor).round(),
-      sodiumMg: (sodiumMg * factor).round(),
-      portionSize: portionSize * factor,
-      portionUnit: portionUnit,
-    );
+    return withAmount(portionSize * multiplier);
   }
 
   RecipeIngredient copyWith({
@@ -106,6 +137,7 @@ class RecipeIngredient {
     int? sodiumMg,
     double? portionSize,
     String? portionUnit,
+    SavedFood? baseFood,
   }) {
     return RecipeIngredient(
       id: id ?? this.id,
@@ -120,6 +152,7 @@ class RecipeIngredient {
       sodiumMg: sodiumMg ?? this.sodiumMg,
       portionSize: portionSize ?? this.portionSize,
       portionUnit: portionUnit ?? this.portionUnit,
+      baseFood: baseFood ?? _baseFood,
     );
   }
 
@@ -137,6 +170,7 @@ class RecipeIngredient {
       'sodiumMg': sodiumMg,
       'portionSize': portionSize,
       'portionUnit': portionUnit,
+      if (_baseFood != null) 'baseFood': _baseFood.toMap(),
     };
   }
 
@@ -154,6 +188,9 @@ class RecipeIngredient {
       sodiumMg: (map['sodiumMg'] as num?)?.toInt() ?? 0,
       portionSize: (map['portionSize'] as num?)?.toDouble() ?? 1.0,
       portionUnit: map['portionUnit'] as String? ?? 'serving',
+      baseFood: map['baseFood'] != null
+          ? SavedFood.fromMap(map['baseFood'] as Map<String, dynamic>)
+          : null,
     );
   }
 
