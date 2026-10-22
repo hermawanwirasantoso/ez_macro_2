@@ -101,23 +101,12 @@ class AiLoggerCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
-          width: 1.2,
-        ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.25)
-                : const Color(0xFF5A4D3A).withValues(alpha: 0.07),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(26),
+        color: AppColors.card(isDark),
+        border: Border.all(color: AppColors.border(isDark)),
+        boxShadow: AppColors.cardShadow(isDark),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: inputController,
         builder: (BuildContext context, TextEditingValue textValue, Widget? _) {
@@ -140,92 +129,54 @@ class AiLoggerCard extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              // Header Row with Title & Status Badge
+              // Header: title, live status line and AI status pill
               Row(
                 children: <Widget>[
                   Container(
-                    padding: const EdgeInsets.all(7),
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[AppColors.primaryLight, AppColors.accent],
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      size: 16,
-                      color: Colors.white,
-                    ),
+                    child: const Icon(Icons.auto_awesome, size: 18, color: Colors.white),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          'Log With AI',
+                          'Log a meal',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
-                            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                            color: AppColors.textPrimary(isDark),
                           ),
                         ),
                         Text(
                           isStoredFoodMatch
-                              ? 'Stored food detected. Instant local log (No API call).'
+                              ? 'Saved food found. Logs instantly, no API call.'
                               : (hasConfiguredApiKey
-                                  ? 'AI key active. Local estimate on fallback.'
-                                  : 'Running local estimate. Tap to add key.'),
+                                  ? 'Describe it in plain words. AI does the math.'
+                                  : 'Using local estimates. Add a key for AI.'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isStoredFoodMatch ? FontWeight.w600 : FontWeight.normal,
-                            color: isStoredFoodMatch
-                                ? AppColors.success
-                                : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                            fontSize: 12,
+                            fontWeight: isStoredFoodMatch ? FontWeight.w700 : FontWeight.w500,
+                            color: isStoredFoodMatch ? AppColors.success : AppColors.textSecondary(isDark),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (onQuickAdd != null) ...<Widget>[
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        key: const Key('openQuickAddButton'),
-                        onTap: onQuickAdd,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
-                              SizedBox(width: 4),
-                              Text(
-                                'Manual Add',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryLight,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
+                  const SizedBox(width: 8),
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -233,34 +184,34 @@ class AiLoggerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       onTap: onConfigureApiKey,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: hasConfiguredApiKey
-                              ? AppColors.success.withValues(alpha: 0.12)
-                              : AppColors.primary.withValues(alpha: 0.1),
+                              ? AppColors.success.withValues(alpha: isDark ? 0.18 : 0.1)
+                              : AppColors.subtleFill(isDark),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: hasConfiguredApiKey
-                                ? AppColors.success.withValues(alpha: 0.3)
-                                : AppColors.primary.withValues(alpha: 0.25),
-                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            Icon(
-                              hasConfiguredApiKey ? Icons.check_circle_outline : Icons.settings_outlined,
-                              size: 13,
-                              color: hasConfiguredApiKey ? AppColors.success : AppColors.primaryLight,
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: hasConfiguredApiKey ? AppColors.success : AppColors.carbs,
+                              ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 6),
                             Text(
                               hasConfiguredApiKey ? 'AI Ready' : 'Local NLP',
                               key: const Key('configureApiKeyBadge'),
                               style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: hasConfiguredApiKey ? AppColors.success : AppColors.primaryLight,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: hasConfiguredApiKey
+                                    ? (isDark ? AppColors.brandGlow : AppColors.success)
+                                    : AppColors.textSecondary(isDark),
                               ),
                             ),
                           ],
@@ -271,23 +222,100 @@ class AiLoggerCard extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
 
-              // Suggestion Chips Row
+              // Input field with an attached parse button
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      key: const Key('nlInputField'),
+                      controller: inputController,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary(isDark),
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'What did you eat?',
+                        prefixIcon: Icon(
+                          isStoredFoodMatch ? Icons.offline_bolt_rounded : Icons.restaurant_rounded,
+                          size: 20,
+                          color: isStoredFoodMatch ? AppColors.success : AppColors.textSecondary(isDark),
+                        ),
+                        suffixIcon: currentText.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                tooltip: 'Clear',
+                                onPressed: () {
+                                  inputController.clear();
+                                },
+                              )
+                            : null,
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => onParse(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: FilledButton(
+                      key: const Key('parseMealButton'),
+                      onPressed: isParsing ? null : onParse,
+                      style: FilledButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: isParsing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                            )
+                          : const Icon(Icons.arrow_upward_rounded, size: 22, semanticLabel: 'Log meal'),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Quick actions: manual entry, saved foods, then example phrases
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: <Widget>[
+                    if (onQuickAdd != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ActionChip(
+                          key: const Key('openQuickAddButton'),
+                          onPressed: onQuickAdd,
+                          avatar: Icon(Icons.add_rounded, size: 16, color: AppColors.brandText(isDark)),
+                          label: Text(
+                            'Manual Add',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.brandText(isDark),
+                            ),
+                          ),
+                          backgroundColor: AppColors.primary.withValues(alpha: isDark ? 0.18 : 0.1),
+                          side: BorderSide.none,
+                        ),
+                      ),
                     if (savedFoods.isNotEmpty)
                       ...savedFoods.take(4).map((SavedFood food) {
                         return Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: ActionChip(
                             key: Key('storedFoodChip_${food.id}'),
-                            avatar: const Icon(
+                            avatar: Icon(
                               Icons.bookmark_rounded,
-                              size: 13,
-                              color: AppColors.primary,
+                              size: 14,
+                              color: AppColors.brandText(isDark),
                             ),
                             label: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -295,39 +323,22 @@ class AiLoggerCard extends StatelessWidget {
                                 Text(
                                   food.name,
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w700,
-                                    color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                    color: AppColors.textPrimary(isDark),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 5),
                                 Text(
                                   '${food.calories} kcal',
                                   style: TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.success.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'Stored',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.success,
-                                    ),
+                                    color: AppColors.textSecondary(isDark),
                                   ),
                                 ),
                               ],
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             onPressed: () {
                               inputController.text = food.name;
                               inputController.selection = TextSelection.fromPosition(
@@ -350,12 +361,12 @@ class AiLoggerCard extends StatelessWidget {
                             label: Text(
                               suggestion,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                color: AppColors.textSecondary(isDark),
                               ),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            backgroundColor: Colors.transparent,
                             onPressed: () => onSelectSuggestion(suggestion),
                           ),
                         );
@@ -363,69 +374,6 @@ class AiLoggerCard extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // Input field and Parse Button
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      key: const Key('nlInputField'),
-                      controller: inputController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. a bowl of rice, or chicken rice 620 kcal',
-                        isDense: true,
-                        prefixIcon: Icon(
-                          isStoredFoodMatch ? Icons.offline_bolt_rounded : Icons.search,
-                          size: 20,
-                          color: isStoredFoodMatch
-                              ? AppColors.success
-                              : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                        ),
-                        suffixIcon: currentText.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  inputController.clear();
-                                },
-                              )
-                            : null,
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => onParse(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    key: const Key('parseMealButton'),
-                    onPressed: isParsing ? null : onParse,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: isParsing
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Icon(Icons.bolt, size: 18),
-                              SizedBox(width: 4),
-                              Text('Parse'),
-                            ],
-                          ),
-                  ),
-                ],
               ),
 
               // Stored Food Match Banner (when direct match detected)

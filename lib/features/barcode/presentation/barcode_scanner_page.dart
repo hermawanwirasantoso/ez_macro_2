@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../calorie_tracker/presentation/theme/app_theme.dart';
 
 /// Full-screen camera scanner. Pops with the detected barcode string, or
 /// null when dismissed without a scan.
@@ -215,7 +216,7 @@ class _ScanFramePainter extends CustomPainter {
 
     final Paint borderPaint = Paint()
       ..shader = const LinearGradient(
-        colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
+        colors: <Color>[AppColors.brandGlow, AppColors.primaryLight],
       ).createShader(frame)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3

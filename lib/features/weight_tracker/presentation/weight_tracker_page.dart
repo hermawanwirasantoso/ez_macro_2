@@ -10,6 +10,7 @@ import 'widgets/weight_entry_modal.dart';
 import 'widgets/weight_goal_modal.dart';
 import '../../calorie_tracker/data/calorie_storage.dart';
 import '../../calorie_tracker/presentation/theme/app_theme.dart';
+import '../../calorie_tracker/presentation/widgets/app_header.dart';
 import '../../insights/presentation/insights_and_backup_modal.dart';
 
 class WeightTrackerPage extends StatefulWidget {
@@ -111,89 +112,40 @@ class _WeightTrackerPageState extends State<WeightTrackerPage> {
       extendBodyBehindAppBar: true,
       bottomNavigationBar: widget.bottomNavigationBar,
       appBar: AppBar(
-        title: Row(
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: <Color>[AppColors.primary, AppColors.accent],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.monitor_weight_rounded,
-                size: 18,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Weight Tracker',
-              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-            ),
-          ],
-        ),
+        toolbarHeight: 62,
+        titleSpacing: 16,
+        actionsPadding: const EdgeInsets.only(right: 12),
+        title: const AppHeaderTitle(icon: Icons.monitor_weight_rounded, title: 'Weight'),
         actions: <Widget>[
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('openGoalModalButton'),
-              onPressed: _openGoalModal,
-              icon: const Icon(
-                Icons.flag_rounded,
-                size: 18,
-                color: AppColors.accent,
-              ),
-              tooltip: 'Configure Weight Goals',
-            ),
+          HeaderActionButton(
+            key: const Key('openGoalModalButton'),
+            onPressed: _openGoalModal,
+            icon: Icons.flag_rounded,
+            tooltip: 'Configure Weight Goals',
           ),
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('openInsightsModalButtonWeightPage'),
-              onPressed: () {
-                InsightsAndBackupModal.show(
-                  context,
-                  calorieStorage: const PreferencesCalorieStorage(),
-                  weightStorage: widget.weightStorage,
-                  onDataRestored: () {
-                    _loadData();
-                  },
-                );
-              },
-              icon: const Icon(
-                Icons.auto_graph_rounded,
-                size: 18,
-                color: AppColors.primaryLight,
-              ),
-              tooltip: 'Weekly Insights & Backup',
-            ),
+          HeaderActionButton(
+            key: const Key('openInsightsModalButtonWeightPage'),
+            onPressed: () {
+              InsightsAndBackupModal.show(
+                context,
+                calorieStorage: const PreferencesCalorieStorage(),
+                weightStorage: widget.weightStorage,
+                onDataRestored: () {
+                  _loadData();
+                },
+              );
+            },
+            icon: Icons.insights_rounded,
+            tooltip: 'Weekly Insights & Backup',
           ),
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('toggleThemeButtonWeightPage'),
-              onPressed: widget.onToggleTheme,
-              icon: Icon(
-                widget.isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                color: widget.isDarkMode ? Colors.amber : AppColors.primaryDark,
-              ),
-              tooltip: 'Toggle theme',
-            ),
+          HeaderActionButton(
+            key: const Key('toggleThemeButtonWeightPage'),
+            onPressed: widget.onToggleTheme,
+            icon: widget.isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+            iconColor: widget.isDarkMode ? AppColors.carbs : AppColors.primaryDark,
+            tooltip: 'Toggle theme',
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: DecoratedBox(

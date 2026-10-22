@@ -50,6 +50,12 @@ Widget buildTestHost(Widget child) {
   );
 }
 
+/// Finds a logged entry by food name inside the food log list.
+Finder _entryNamed(String label) => find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.text(label),
+    );
+
 void main() {
   group('Barcode scan in FoodEntryModal', () {
     testWidgets('fills food details from a scanned barcode lookup',
@@ -235,7 +241,7 @@ void main() {
       );
       expect(find.text('160 / 2200 kcal'), findsOneWidget);
 
-      final Finder entryText = find.text('Oreo - 160 kcal Barcode');
+      final Finder entryText = _entryNamed('Oreo');
       await _scrollIntoView(tester, entryText);
       expect(entryText, findsOneWidget);
 

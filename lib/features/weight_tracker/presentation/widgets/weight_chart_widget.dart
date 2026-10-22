@@ -40,31 +40,28 @@ class _WeightChartWidgetState extends State<WeightChartWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // Header Row: Title and Time Range Selector
+            // Header: title, then a full-width time range selector
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.show_chart_rounded,
-                      size: 20,
-                      color: AppColors.primaryLight,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Weight Trend',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  Icons.show_chart_rounded,
+                  size: 20,
+                  color: AppColors.brandText(isDark),
                 ),
-                _buildRangeSelector(isDark),
+                const SizedBox(width: 8),
+                Text(
+                  'Weight Trend',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: AppColors.textPrimary(isDark),
+                  ),
+                ),
               ],
             ),
+            const SizedBox(height: 12),
+            _buildRangeSelector(isDark),
             const SizedBox(height: 16),
 
             // Main Chart or Empty State
@@ -154,36 +151,37 @@ class _WeightChartWidgetState extends State<WeightChartWidget> {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.subtleFill(isDark),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: WeightTimeRange.values.map((WeightTimeRange range) {
           final bool isSelected = widget.trackerState.selectedRange == range;
-          return GestureDetector(
-            key: Key('rangeFilter_${range.name}'),
-            onTap: () {
-              setState(() {
-                _selectedPointIndex = null;
-              });
-              widget.onSelectRange(range);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Text(
-                range.label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected
-                      ? Colors.white
-                      : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+          return Expanded(
+            child: GestureDetector(
+              key: Key('rangeFilter_${range.name}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() {
+                  _selectedPointIndex = null;
+                });
+                widget.onSelectRange(range);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  range.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? Colors.white : AppColors.textSecondary(isDark),
+                  ),
                 ),
               ),
             ),
@@ -386,8 +384,9 @@ class _WeightLineChartPainter extends CustomPainter {
       ..strokeWidth = 1;
 
     final TextStyle axisTextStyle = TextStyle(
-      fontSize: 9,
-      fontWeight: FontWeight.w500,
+      fontFamily: AppTheme.fontFamily,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
       color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
     );
 
@@ -500,6 +499,17 @@ class _WeightLineChartPainter extends CustomPainter {
       ..color = Colors.amber
       ..style = PaintingStyle.fill;
 
+    // Space date labels so neighbours never overlap; the last date always gets one.
+    final double labelSlot = (TextPainter(
+          text: TextSpan(text: '12/28', style: axisTextStyle),
+          textDirection: TextDirection.ltr,
+        )..layout())
+            .width +
+        8;
+    final double pointSpacing = points.length > 1 ? points[1].dx - points[0].dx : chartWidth;
+    final int labelEvery = math.max(1, (labelSlot / pointSpacing).ceil());
+    final int lastIndex = points.length - 1;
+
     for (int i = 0; i < points.length; i++) {
       final Offset pt = points[i];
       final bool isSelected = selectedIndex == i;
@@ -509,11 +519,9 @@ class _WeightLineChartPainter extends CustomPainter {
       // Inner fill
       canvas.drawCircle(pt, isSelected ? 5.0 : 3.5, isSelected ? selectedPointPaint : pointPaint);
 
-      // Date labels along X axis for selected or interval entries
-      final bool shouldDrawLabel = points.length <= 7 ||
-          i == 0 ||
-          i == points.length - 1 ||
-          (points.length > 7 && i % (points.length ~/ 4) == 0);
+      // Date labels along X axis at evenly spaced entries
+      final bool shouldDrawLabel =
+          i == lastIndex || (i % labelEvery == 0 && lastIndex - i >= labelEvery);
 
       if (shouldDrawLabel) {
         final String dateLabel = DateFormat('M/d').format(entries[i].date);

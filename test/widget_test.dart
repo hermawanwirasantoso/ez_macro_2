@@ -56,6 +56,12 @@ Future<void> _tapInSheet(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
 }
 
+/// Finds a logged entry by food name inside the food log list.
+Finder _entryNamed(String label) => find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.text(label),
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -357,7 +363,7 @@ void main() {
     expect(find.text('Carbs  10/255 g'), findsOneWidget);
     expect(find.text('Fat  3/60 g'), findsOneWidget);
 
-    final Finder loggedEntryFinder = find.text('Protein Shake - 250 kcal Manual');
+    final Finder loggedEntryFinder = _entryNamed('Protein Shake');
     await _scrollIntoView(tester, loggedEntryFinder);
     expect(loggedEntryFinder, findsOneWidget);
   });
@@ -394,7 +400,7 @@ void main() {
     await _scrollToHero(tester);
     expect(find.text('120 / 2200 kcal'), findsOneWidget);
 
-    final Finder updatedEntryFinder = find.text('Large Honeycrisp Apple - 120 kcal Manual');
+    final Finder updatedEntryFinder = _entryNamed('Large Honeycrisp Apple');
     await _scrollIntoView(tester, updatedEntryFinder);
     expect(updatedEntryFinder, findsOneWidget);
   });
@@ -431,8 +437,8 @@ void main() {
     await tester.tap(lunchFilter);
     await tester.pumpAndSettle();
 
-    expect(find.text('Chicken Bowl - 500 kcal Manual'), findsOneWidget);
-    expect(find.text('Oatmeal - 300 kcal Manual'), findsNothing);
+    expect(_entryNamed('Chicken Bowl'), findsOneWidget);
+    expect(_entryNamed('Oatmeal'), findsNothing);
 
     // Filter back to All
     final Finder allFilter = find.byKey(const Key('mealFilter_all'));
@@ -440,11 +446,11 @@ void main() {
     await tester.tap(allFilter);
     await tester.pumpAndSettle();
 
-    final Finder chickenEntry = find.text('Chicken Bowl - 500 kcal Manual');
+    final Finder chickenEntry = _entryNamed('Chicken Bowl');
     await _scrollIntoView(tester, chickenEntry);
     expect(chickenEntry, findsOneWidget);
 
-    final Finder oatmealEntry = find.text('Oatmeal - 300 kcal Manual');
+    final Finder oatmealEntry = _entryNamed('Oatmeal');
     await _scrollIntoView(tester, oatmealEntry);
     expect(oatmealEntry, findsOneWidget);
   });

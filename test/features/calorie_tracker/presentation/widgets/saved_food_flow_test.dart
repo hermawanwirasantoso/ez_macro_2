@@ -28,6 +28,12 @@ Future<void> _scrollToTop(WidgetTester tester) async {
   await _scrollIntoView(tester, find.byKey(const Key('caloriesConsumedText')), delta: -50);
 }
 
+/// Finds a logged entry by food name inside the food log list.
+Finder _entryNamed(String label) => find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.text(label),
+    );
+
 void main() {
   testWidgets('user can save a custom food and reuse it from Quick Add',
       (WidgetTester tester) async {
@@ -91,9 +97,13 @@ void main() {
     await _scrollToTop(tester);
     expect(find.text('1080 / 2200 kcal'), findsOneWidget);
 
-    final Finder savedEntryFinder = find.text('Homemade Burrito - 540 kcal Saved');
+    final Finder savedEntryFinder = find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.textContaining(RegExp(r'· Saved$')),
+    );
     await _scrollIntoView(tester, savedEntryFinder);
     expect(savedEntryFinder, findsOneWidget);
+    expect(_entryNamed('Homemade Burrito'), findsNWidgets(2));
   });
 
   testWidgets('user can choose custom portion when logging a saved food',
@@ -309,7 +319,10 @@ void main() {
     await _scrollToTop(tester);
     expect(find.text('330 / 2200 kcal'), findsOneWidget);
 
-    final Finder portion200g = find.text('200 g');
+    final Finder portion200g = find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.textContaining('· 200 g'),
+    );
     await _scrollIntoView(tester, portion200g);
     expect(portion200g, findsOneWidget);
 
@@ -345,7 +358,10 @@ void main() {
     await _scrollToTop(tester);
     expect(find.text('495 / 2200 kcal'), findsOneWidget);
 
-    final Finder portion300g = find.text('300 g');
+    final Finder portion300g = find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.textContaining('· 300 g'),
+    );
     await _scrollIntoView(tester, portion300g);
     expect(portion300g, findsOneWidget);
 

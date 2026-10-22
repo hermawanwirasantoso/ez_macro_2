@@ -349,12 +349,12 @@ class _ApiKeyModalState extends State<ApiKeyModal> {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      colors: <Color>[AppColors.primary, AppColors.accent],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: <BoxShadow>[
                       BoxShadow(
-                        color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                        color: AppColors.primary.withValues(alpha: 0.3),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       ),
@@ -701,9 +701,9 @@ class _ApiKeyModalState extends State<ApiKeyModal> {
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: hasCustomKey
-                    ? (isDark ? Colors.greenAccent : Colors.green[800])
+                    ? (isDark ? AppColors.brandGlow : AppColors.primaryDark)
                     : hasEnvKey
-                        ? (isDark ? Colors.indigoAccent : Colors.indigo[800])
+                        ? AppColors.brandText(isDark)
                         : (isDark
                             ? AppColors.darkTextSecondary
                             : AppColors.lightTextSecondary),

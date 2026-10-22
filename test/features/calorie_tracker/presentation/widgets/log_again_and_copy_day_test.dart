@@ -29,6 +29,12 @@ DailyLog _dayLog(String dateKey, List<FoodLogEntry> entries) {
   return DailyLog(dateString: dateKey, entries: entries);
 }
 
+/// Finds a logged entry by food name inside the food log list.
+Finder _entryNamed(String label) => find.descendant(
+      of: find.byKey(const Key('recentEntriesList')),
+      matching: find.text(label),
+    );
+
 void main() {
   testWidgets('user can log the same entry again on the current day',
       (WidgetTester tester) async {
@@ -58,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Logged Oatmeal again.'), findsOneWidget);
-    expect(find.text('Oatmeal - 300 kcal'), findsNWidgets(2));
+    expect(_entryNamed('Oatmeal'), findsNWidgets(2));
     await _scrollIntoView(tester, find.byKey(const Key('caloriesConsumedText')), delta: -50);
     expect(find.text('600 / 2200 kcal'), findsOneWidget);
 
@@ -90,7 +96,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('previousDayButton')));
     await tester.pumpAndSettle();
-    final Finder yesterdayEntryText = find.text('Chicken Bowl - 540 kcal');
+    final Finder yesterdayEntryText = _entryNamed('Chicken Bowl');
     await _scrollIntoView(tester, yesterdayEntryText);
     expect(yesterdayEntryText, findsOneWidget);
 
@@ -109,8 +115,8 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('dateTitleText'))).data,
       "Today's Calories",
     );
-    await _scrollIntoView(tester, find.text('Chicken Bowl - 540 kcal'));
-    expect(find.text('Chicken Bowl - 540 kcal'), findsOneWidget);
+    await _scrollIntoView(tester, _entryNamed('Chicken Bowl'));
+    expect(_entryNamed('Chicken Bowl'), findsOneWidget);
 
     final DailyLog? today = await storage.loadDayLog(DateTime.now());
     final DailyLog? yesterday = await storage.loadDayLog(
@@ -168,9 +174,9 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('dateTitleText'))).data,
       "Today's Calories",
     );
-    await _scrollIntoView(tester, find.text('Oatmeal - 300 kcal'));
-    expect(find.text('Oatmeal - 300 kcal'), findsOneWidget);
-    expect(find.text('Chicken Bowl - 540 kcal'), findsOneWidget);
+    await _scrollIntoView(tester, _entryNamed('Oatmeal'));
+    expect(_entryNamed('Oatmeal'), findsOneWidget);
+    expect(_entryNamed('Chicken Bowl'), findsOneWidget);
     expect(find.byKey(const Key('copyDayToTodayButton')), findsNothing);
 
     final DailyLog? today = await storage.loadDayLog(DateTime.now());

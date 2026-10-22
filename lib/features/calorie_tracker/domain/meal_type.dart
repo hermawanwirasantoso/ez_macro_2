@@ -43,13 +43,13 @@ enum MealType {
       case MealType.breakfast:
         return const Color(0xFFF59E0B); // Amber / Morning
       case MealType.lunch:
-        return const Color(0xFF10B981); // Emerald / Midday
+        return const Color(0xFF22B8CF); // Cyan / Midday
       case MealType.dinner:
-        return const Color(0xFF6366F1); // Indigo / Evening
+        return const Color(0xFF5B8DEF); // Blue / Evening
       case MealType.snack:
         return const Color(0xFFEC4899); // Pink / Snack
       case MealType.other:
-        return const Color(0xFF64748B); // Slate / Other
+        return const Color(0xFF7A8A82); // Sage gray / Other
     }
   }
 

@@ -22,14 +22,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Weight Tracker'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Weight')), findsOneWidget);
     expect(find.byKey(const Key('heroWeightCard')), findsOneWidget);
     expect(find.byKey(const Key('currentWeightDisplay')), findsOneWidget);
     expect(find.text('--'), findsWidgets);
     expect(find.byKey(const Key('weightChartCard')), findsOneWidget);
     expect(find.text('No weight entries in this period'), findsOneWidget);
     expect(find.byKey(const Key('quickLogWeightButton')), findsOneWidget);
-    expect(find.text('No weigh-ins recorded yet.\nTap "+ Log Weigh-in" to get started!'), findsOneWidget);
+
+    final Finder emptyHistoryText =
+        find.text('No weigh-ins recorded yet.\nTap "+ Log Weigh-in" to get started!');
+    await tester.scrollUntilVisible(emptyHistoryText, 200, scrollable: find.byType(Scrollable).first);
+    expect(emptyHistoryText, findsOneWidget);
   });
 
   testWidgets('User can log a new weight entry with note and body fat', (WidgetTester tester) async {
@@ -307,7 +311,7 @@ void main() {
     await tester.tap(find.byKey(const Key('navDestinationWeight')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Weight Tracker'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Weight')), findsOneWidget);
     expect(find.byKey(const Key('heroWeightCard')), findsOneWidget);
 
     // Switch back to Calories tab

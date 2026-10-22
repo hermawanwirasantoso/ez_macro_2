@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -35,7 +37,7 @@ class UncertaintyProgressBar extends StatelessWidget {
             Container(
               height: minHeight,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
+                color: color.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(minHeight / 2),
               ),
             ),
@@ -47,12 +49,8 @@ class UncertaintyProgressBar extends StatelessWidget {
                   width: bandWidth,
                   height: minHeight,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.28),
+                    color: color.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(minHeight / 2),
-                    border: Border.all(
-                      color: color.withValues(alpha: 0.4),
-                      width: 1,
-                    ),
                   ),
                 ),
               ),
@@ -69,17 +67,9 @@ class UncertaintyProgressBar extends StatelessWidget {
                     height: minHeight,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: gradientColors ??
-                            <Color>[color.withValues(alpha: 0.85), color],
+                        colors: gradientColors ?? <Color>[color.withValues(alpha: 0.8), color],
                       ),
                       borderRadius: BorderRadius.circular(minHeight / 2),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.3),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
                     ),
                   ),
                 );
@@ -92,6 +82,130 @@ class UncertaintyProgressBar extends StatelessWidget {
   }
 }
 
+/// Animated circular progress ring with an optional uncertainty band.
+class CalorieRing extends StatelessWidget {
+  const CalorieRing({
+    super.key,
+    required this.progress,
+    required this.color,
+    this.spread = 0,
+    this.size = 112,
+    this.strokeWidth = 11,
+    this.child,
+  });
+
+  final double progress;
+  final Color color;
+  final double spread;
+  final double size;
+  final double strokeWidth;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: progress.clamp(0.0, 1.0)),
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOutCubic,
+        builder: (BuildContext context, double value, Widget? _) {
+          return CustomPaint(
+            painter: _RingPainter(
+              progress: value,
+              spread: spread,
+              color: color,
+              trackColor: isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFF2E3B33).withValues(alpha: 0.08),
+              strokeWidth: strokeWidth,
+            ),
+            child: Center(child: child),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.progress,
+    required this.spread,
+    required this.color,
+    required this.trackColor,
+    required this.strokeWidth,
+  });
+
+  final double progress;
+  final double spread;
+  final Color color;
+  final Color trackColor;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect rect = Offset.zero & size;
+    final Rect arcRect = rect.deflate(strokeWidth / 2);
+    const double start = -math.pi / 2;
+
+    canvas.drawArc(
+      arcRect,
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..color = trackColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+
+    if (spread > 0 && progress > 0) {
+      final double lower = (progress * (1 - spread)).clamp(0.0, 1.0);
+      final double upper = (progress * (1 + spread)).clamp(0.0, 1.0);
+      canvas.drawArc(
+        arcRect,
+        start + math.pi * 2 * lower,
+        math.pi * 2 * (upper - lower),
+        false,
+        Paint()
+          ..color = color.withValues(alpha: 0.28)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+    }
+
+    if (progress > 0) {
+      final double sweep = math.pi * 2 * progress;
+      canvas.drawArc(
+        arcRect,
+        start,
+        sweep,
+        false,
+        Paint()
+          ..shader = SweepGradient(
+            startAngle: 0,
+            endAngle: math.pi * 2,
+            transform: const GradientRotation(start),
+            colors: <Color>[color.withValues(alpha: 0.75), color],
+            stops: <double>[0, progress.clamp(0.01, 1.0)],
+          ).createShader(rect)
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = strokeWidth,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.spread != spread ||
+      oldDelegate.color != color ||
+      oldDelegate.trackColor != trackColor;
+}
+
+/// Compact macro row: colored dot, "Label  consumed/target g", percent, and a slim bar.
 class MacroCardItem extends StatelessWidget {
   const MacroCardItem({
     super.key,
@@ -122,84 +236,67 @@ class MacroCardItem extends StatelessWidget {
     final double spread = showSpread ? averageSpread : 0;
     final int low = (consumed * (1 - spread)).round().clamp(0, 99999).toInt();
     final int high = (consumed * (1 + spread)).round().clamp(0, 99999).toInt();
-    final int percent = (progress * 100).round();
+    final int percent = target <= 0 ? 0 : (consumed / target * 100).round();
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.04)
-            : Colors.black.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 16, color: color),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: isDark ? 0.18 : 0.13),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '$label  $consumed/$target g',
-                  key: labelKey,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                  ),
+              child: Icon(icon, size: 15, color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '$label  $consumed/$target g',
+                key: labelKey,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary(isDark),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$percent%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (spread > 0) ...<Widget>[
-            const SizedBox(height: 4),
+            ),
             Text(
-              'Range: $low-$high g (+/-${(spread * 100).round()}%)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                    fontSize: 11,
-                  ),
+              '$percent%',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
           ],
-          const SizedBox(height: 8),
-          UncertaintyProgressBar(
+        ),
+        if (spread > 0) ...<Widget>[
+          const SizedBox(height: 2),
+          Padding(
+            padding: const EdgeInsets.only(left: 36),
+            child: Text(
+              'Range: $low-$high g (+/-${(spread * 100).round()}%)',
+              style: TextStyle(color: AppColors.textSecondary(isDark), fontSize: 11),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.only(left: 36),
+          child: UncertaintyProgressBar(
             key: Key('${labelKey.toString()}-bar'),
             progress: progress,
             spread: spread,
             color: color,
-            minHeight: 8,
+            minHeight: 7,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

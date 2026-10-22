@@ -708,8 +708,8 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-              ? <Color>[const Color(0xFF1E293B), const Color(0xFF0F172A)]
-              : <Color>[const Color(0xFFF1F5F9), const Color(0xFFE2E8F0)],
+              ? <Color>[AppColors.darkSurface, AppColors.darkCard]
+              : <Color>[AppColors.lightCard, AppColors.lightBackgroundGrad1],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -755,9 +755,9 @@ class _RecipeBuilderModalState extends State<RecipeBuilderModal> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
               _macroStatCol('Calories', '$_perServingCalories', 'kcal', AppColors.primaryLight),
-              _macroStatCol('Protein', '$_perServingProtein', 'g', const Color(0xFF38BDF8)),
-              _macroStatCol('Carbs', '$_perServingCarbs', 'g', const Color(0xFFFB923C)),
-              _macroStatCol('Fat', '$_perServingFat', 'g', const Color(0xFF4ADE80)),
+              _macroStatCol('Protein', '$_perServingProtein', 'g', AppColors.protein),
+              _macroStatCol('Carbs', '$_perServingCarbs', 'g', AppColors.carbs),
+              _macroStatCol('Fat', '$_perServingFat', 'g', AppColors.fat),
             ],
           ),
         ],

@@ -622,15 +622,15 @@ class _RecipeListModalState extends State<RecipeListModal> {
                   ),
                   Text(
                     '🥩 ${recipe.proteinPerServing}g P',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF38BDF8)),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.protein),
                   ),
                   Text(
                     '🌾 ${recipe.carbsPerServing}g C',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFFFB923C)),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.carbs),
                   ),
                   Text(
                     '🥑 ${recipe.fatPerServing}g F',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF4ADE80)),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.fat),
                   ),
                 ],
               ),

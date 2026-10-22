@@ -241,7 +241,7 @@ class DetailedNutritionModal extends StatelessWidget {
                       ? '$satFatPercent% of total fat'
                       : 'Fat sub-component',
                   icon: Icons.water_drop_outlined,
-                  color: const Color(0xFFF97316),
+                  color: AppColors.saturatedFat,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 8),
@@ -251,7 +251,7 @@ class DetailedNutritionModal extends StatelessWidget {
                   value: '$fiber g',
                   subtitle: 'Daily target ~25-30g recommended',
                   icon: Icons.grass_rounded,
-                  color: const Color(0xFF10B981),
+                  color: AppColors.fiber,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 8),
@@ -263,7 +263,7 @@ class DetailedNutritionModal extends StatelessWidget {
                       ? '$addedSugarPercent% of total carbohydrates'
                       : 'Carbohydrate sub-component',
                   icon: Icons.cookie_outlined,
-                  color: const Color(0xFFEC4899),
+                  color: AppColors.sugar,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 8),
@@ -275,7 +275,7 @@ class DetailedNutritionModal extends StatelessWidget {
                       ? 'Above 2,300 mg daily benchmark'
                       : 'Within 2,300 mg daily benchmark',
                   icon: Icons.grain_rounded,
-                  color: const Color(0xFF06B6D4),
+                  color: AppColors.sodium,
                   isDark: isDark,
                 ),
 
@@ -391,22 +391,22 @@ class DetailedNutritionModal extends StatelessWidget {
                               if (entry.saturatedFatG > 0)
                                 _chipBadge(
                                   'Sat Fat: ${entry.saturatedFatG}g',
-                                  const Color(0xFFF97316),
+                                  AppColors.saturatedFat,
                                 ),
                               if (entry.fiberG > 0)
                                 _chipBadge(
                                   'Fiber: ${entry.fiberG}g',
-                                  const Color(0xFF10B981),
+                                  AppColors.fiber,
                                 ),
                               if (entry.addedSugarG > 0)
                                 _chipBadge(
                                   'Sugar: ${entry.addedSugarG}g',
-                                  const Color(0xFFEC4899),
+                                  AppColors.sugar,
                                 ),
                               if (entry.sodiumMg > 0)
                                 _chipBadge(
                                   'Sodium: ${entry.sodiumMg}mg',
-                                  const Color(0xFF06B6D4),
+                                  AppColors.sodium,
                                 ),
                             ],
                           ),

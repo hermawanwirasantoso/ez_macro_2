@@ -19,6 +19,7 @@ import 'features/calorie_tracker/domain/saved_food_matcher.dart';
 import 'features/calorie_tracker/domain/tracker_state.dart';
 import 'features/calorie_tracker/presentation/theme/app_theme.dart';
 import 'features/calorie_tracker/presentation/widgets/ai_logger_card.dart';
+import 'features/calorie_tracker/presentation/widgets/app_header.dart';
 import 'features/calorie_tracker/presentation/widgets/api_key_modal.dart';
 import 'features/calorie_tracker/presentation/widgets/date_navigation_bar.dart';
 import 'features/calorie_tracker/presentation/widgets/detailed_nutrition_modal.dart';
@@ -230,21 +231,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     final Widget navBar = Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkBackgroundGrad2 : AppColors.lightBackgroundGrad2,
+        color: isDark ? AppColors.darkBackgroundGrad2 : AppColors.lightSurface,
         border: Border(
-          top: BorderSide(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            width: 1,
-          ),
+          top: BorderSide(color: AppColors.border(isDark)),
         ),
       ),
       child: NavigationBar(
         key: const Key('mainBottomNavigationBar'),
         selectedIndex: _currentIndex,
-        backgroundColor: Colors.transparent,
-        indicatorColor: AppColors.primary.withValues(alpha: 0.2),
-        surfaceTintColor: Colors.transparent,
-        height: 64,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (int index) {
           setState(() {
@@ -255,13 +249,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           NavigationDestination(
             key: Key('navDestinationCalories'),
             icon: Icon(Icons.local_fire_department_outlined),
-            selectedIcon: Icon(Icons.local_fire_department_rounded, color: AppColors.primaryLight),
+            selectedIcon: Icon(Icons.local_fire_department_rounded),
             label: 'Calories',
           ),
           NavigationDestination(
             key: Key('navDestinationWeight'),
             icon: Icon(Icons.monitor_weight_outlined),
-            selectedIcon: Icon(Icons.monitor_weight_rounded, color: AppColors.primaryLight),
+            selectedIcon: Icon(Icons.monitor_weight_rounded),
             label: 'Weight',
           ),
         ],
@@ -1027,156 +1021,95 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
   @override
   Widget build(BuildContext context) {
     final bool isDark = widget.isDarkMode;
-    final double progress = _trackerState.dailyGoal <= 0
-        ? 0
-        : (_trackerState.consumedCalories / _trackerState.dailyGoal).clamp(0, 1).toDouble();
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       bottomNavigationBar: widget.bottomNavigationBar,
       appBar: AppBar(
-        title: Row(
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: <Color>[AppColors.primary, AppColors.accent],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.bolt_rounded,
-                size: 18,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'EZ Macro',
-              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-            ),
-          ],
-        ),
+        toolbarHeight: 62,
+        titleSpacing: 16,
+        actionsPadding: const EdgeInsets.only(right: 12),
+        title: const AppHeaderTitle(icon: Icons.eco_rounded, title: 'EZ Macro'),
         actions: <Widget>[
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('openApiKeyModalButton'),
-              onPressed: _openApiKeyModal,
-              icon: Icon(
-                Icons.vpn_key_rounded,
-                size: 18,
-                color: _hasConfiguredApiKey
-                    ? AppColors.success
-                    : (isDark ? Colors.white70 : Colors.black54),
-              ),
-              tooltip: 'Configure AI API Keys',
-            ),
+          HeaderActionButton(
+            key: const Key('openApiKeyModalButton'),
+            onPressed: _openApiKeyModal,
+            icon: Icons.key_rounded,
+            iconColor: _hasConfiguredApiKey ? AppColors.success : null,
+            tooltip: 'Configure AI API Keys',
           ),
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('openRecipesModalButton'),
-              onPressed: () {
-                RecipeListModal.show(
-                  context,
-                  recipeStorage: widget.recipeStorage,
-                  savedFoods: _savedFoods,
-                  defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
-                  onLogRecipe: (Recipe recipe, double servings, MealType mealType) {
-                    final FoodLogEntry entry = recipe.toFoodLogEntry(
-                      loggedServings: servings,
-                      mealType: mealType,
-                    );
-                    _addCalories(
-                      entry.calories,
-                      entry.mealLabel,
-                      proteinG: entry.proteinG,
-                      carbsG: entry.carbsG,
-                      fatG: entry.fatG,
-                      saturatedFatG: entry.saturatedFatG,
-                      fiberG: entry.fiberG,
-                      addedSugarG: entry.addedSugarG,
-                      sodiumMg: entry.sodiumMg,
-                      portionSize: entry.portionSize,
-                      portionUnit: entry.portionUnit,
-                      sourceLabel: entry.sourceLabel ?? 'Recipe',
-                      mealType: entry.mealType,
-                    );
-                  },
-                );
-              },
-              icon: const Icon(
-                Icons.soup_kitchen_rounded,
-                size: 18,
-                color: AppColors.primaryLight,
-              ),
-              tooltip: 'Recipes & Meal Templates',
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('openInsightsModalButton'),
-              onPressed: () {
-                InsightsAndBackupModal.show(
-                  context,
-                  calorieStorage: widget.calorieStorage,
-                  weightStorage: widget.weightStorage,
-                  recipeStorage: widget.recipeStorage,
-                  onDataRestored: () {
-                    _initTrackerData();
-                    _loadSavedFoods();
-                  },
-                );
-              },
-              icon: const Icon(
-                Icons.auto_graph_rounded,
-                size: 18,
-                color: AppColors.primaryLight,
-              ),
-              tooltip: 'Weekly Insights & Backup',
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              key: const Key('toggleThemeButton'),
-              onPressed: widget.onToggleTheme,
-              icon: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  return RotationTransition(
-                    turns: animation,
-                    child: FadeTransition(opacity: animation, child: child),
+          HeaderActionButton(
+            key: const Key('openRecipesModalButton'),
+            onPressed: () {
+              RecipeListModal.show(
+                context,
+                recipeStorage: widget.recipeStorage,
+                savedFoods: _savedFoods,
+                defaultMealType: _trackerState.selectedMealFilter ?? MealType.forTime(),
+                onLogRecipe: (Recipe recipe, double servings, MealType mealType) {
+                  final FoodLogEntry entry = recipe.toFoodLogEntry(
+                    loggedServings: servings,
+                    mealType: mealType,
+                  );
+                  _addCalories(
+                    entry.calories,
+                    entry.mealLabel,
+                    proteinG: entry.proteinG,
+                    carbsG: entry.carbsG,
+                    fatG: entry.fatG,
+                    saturatedFatG: entry.saturatedFatG,
+                    fiberG: entry.fiberG,
+                    addedSugarG: entry.addedSugarG,
+                    sodiumMg: entry.sodiumMg,
+                    portionSize: entry.portionSize,
+                    portionUnit: entry.portionUnit,
+                    sourceLabel: entry.sourceLabel ?? 'Recipe',
+                    mealType: entry.mealType,
                   );
                 },
-                child: Icon(
-                  widget.isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                  key: ValueKey<bool>(widget.isDarkMode),
-                  color: widget.isDarkMode ? Colors.amber : AppColors.primaryDark,
-                ),
+              );
+            },
+            icon: Icons.menu_book_rounded,
+            tooltip: 'Recipes & Meal Templates',
+          ),
+          HeaderActionButton(
+            key: const Key('openInsightsModalButton'),
+            onPressed: () {
+              InsightsAndBackupModal.show(
+                context,
+                calorieStorage: widget.calorieStorage,
+                weightStorage: widget.weightStorage,
+                recipeStorage: widget.recipeStorage,
+                onDataRestored: () {
+                  _initTrackerData();
+                  _loadSavedFoods();
+                },
+              );
+            },
+            icon: Icons.insights_rounded,
+            tooltip: 'Weekly Insights & Backup',
+          ),
+          HeaderActionButton(
+            key: const Key('toggleThemeButton'),
+            onPressed: widget.onToggleTheme,
+            tooltip: 'Toggle theme',
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return RotationTransition(
+                  turns: animation,
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: Icon(
+                widget.isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                key: ValueKey<bool>(widget.isDarkMode),
+                size: 19,
+                color: widget.isDarkMode ? AppColors.carbs : AppColors.primaryDark,
               ),
-              tooltip: 'Toggle theme',
             ),
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: DecoratedBox(
@@ -1204,7 +1137,6 @@ class _CalorieHomePageState extends State<CalorieHomePage> {
               // Top Date Navigator & Streak Row
               DateNavigationBar(
                 trackerState: _trackerState,
-                progress: progress,
                 onPreviousDay: () {
                   setState(() {
                     _trackerState.selectedDate =

@@ -95,7 +95,10 @@ void main() {
       await _scrollToTop(tester);
       expect(find.text('350 / 2200 kcal'), findsOneWidget);
 
-      final Finder salmonEntry = find.textContaining('Grilled Salmon');
+      final Finder salmonEntry = find.descendant(
+        of: find.byKey(const Key('recentEntriesList')),
+        matching: find.textContaining('Grilled Salmon'),
+      );
       await _scrollIntoView(tester, salmonEntry);
       expect(salmonEntry, findsWidgets);
     });
@@ -252,7 +255,10 @@ void main() {
       await _scrollToTop(tester);
       expect(find.text('330 / 2200 kcal'), findsOneWidget);
 
-      final Finder chickenEntry = find.textContaining('Grilled Chicken');
+      final Finder chickenEntry = find.descendant(
+        of: find.byKey(const Key('recentEntriesList')),
+        matching: find.textContaining('Grilled Chicken'),
+      );
       await _scrollIntoView(tester, chickenEntry);
       expect(chickenEntry, findsWidgets);
     });
