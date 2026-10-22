@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../../calorie_tracker/data/calorie_storage.dart';
 import '../../calorie_tracker/domain/daily_log.dart';
@@ -9,6 +10,7 @@ import '../../recipes/data/recipe_storage.dart';
 import '../../weight_tracker/data/weight_storage.dart';
 import '../../weight_tracker/domain/weight_entry.dart';
 import '../../weight_tracker/domain/weight_goal.dart';
+import '../data/backup_file_service.dart';
 import '../domain/backup_data.dart';
 import 'widgets/insight_widgets.dart';
 import 'widgets/insights_history_tab.dart';
@@ -21,12 +23,14 @@ class InsightsAndBackupModal extends StatefulWidget {
     required this.weightStorage,
     RecipeStorage? recipeStorage,
     this.onDataRestored,
+    this.backupFiles = const PlatformBackupFileService(),
   }) : recipeStorage = recipeStorage ?? const PreferencesRecipeStorage();
 
   final CalorieStorage calorieStorage;
   final WeightStorage weightStorage;
   final RecipeStorage recipeStorage;
   final VoidCallback? onDataRestored;
+  final BackupFileService backupFiles;
 
   static Future<void> show(
     BuildContext context, {
@@ -34,6 +38,7 @@ class InsightsAndBackupModal extends StatefulWidget {
     required WeightStorage weightStorage,
     RecipeStorage? recipeStorage,
     VoidCallback? onDataRestored,
+    BackupFileService backupFiles = const PlatformBackupFileService(),
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -46,6 +51,7 @@ class InsightsAndBackupModal extends StatefulWidget {
           weightStorage: weightStorage,
           recipeStorage: recipeStorage,
           onDataRestored: onDataRestored,
+          backupFiles: backupFiles,
         ),
       ),
     );
@@ -141,6 +147,105 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
         '✅ Weight History CSV copied to clipboard!',
       );
 
+  Future<void> _saveBackupFile() async {
+    final String fileName = 'ez_macro_backup_${DailyLog.formatDateKey(DateTime.now())}.json';
+    try {
+      final String json = await BackupService.exportToJsonString(
+        calorieStorage: widget.calorieStorage,
+        weightStorage: widget.weightStorage,
+        recipeStorage: widget.recipeStorage,
+      );
+      final bool saved = await widget.backupFiles.saveText(
+        fileName: fileName,
+        contents: json,
+        mimeType: 'application/json',
+      );
+      if (saved) _showSnackBar('✅ Backup saved as $fileName');
+    } catch (_) {
+      _showSnackBar("Couldn't save the backup file.");
+    }
+  }
+
+  Future<void> _restoreFromFile() async {
+    final String? text;
+    try {
+      text = await widget.backupFiles.pickText();
+    } catch (_) {
+      _showSnackBar("Couldn't open that file.");
+      return;
+    }
+    if (text == null || !mounted) return;
+
+    final BackupData? data = BackupService.validateAndParse(text);
+    if (data == null) {
+      _showSnackBar("That file isn't an EZ Macro backup.");
+      return;
+    }
+    await _confirmRestore(data);
+  }
+
+  Future<void> _confirmRestore(BackupData data) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Restore this backup?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (data.exportedAt.year > 2000)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Saved ${DateFormat('MMM d, yyyy').format(data.exportedAt)}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              _BackupSummary(data: data),
+              const SizedBox(height: 12),
+              const Text(
+                'Days in the backup replace the same days here; everything else you have logged is kept. '
+                'Your targets and weight goal come from the backup.',
+                style: TextStyle(fontSize: 12.5, height: 1.4),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('confirmFileRestoreButton'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Restore'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) await _applyRestore(data);
+  }
+
+  Future<void> _applyRestore(BackupData data) async {
+    try {
+      await BackupService.restoreData(
+        data: data,
+        calorieStorage: widget.calorieStorage,
+        weightStorage: widget.weightStorage,
+        recipeStorage: widget.recipeStorage,
+        merge: true,
+      );
+    } catch (_) {
+      _showSnackBar("Couldn't restore the backup.");
+      return;
+    }
+    await _loadData();
+    widget.onDataRestored?.call();
+    _showSnackBar('✅ Backup merged successfully!');
+  }
+
   Future<void> _showRestoreDialog() async {
     final TextEditingController textController = TextEditingController();
     BackupData? validatedData;
@@ -208,11 +313,7 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                           children: <Widget>[
                             const Text('✅ Valid Backup Found:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                             const SizedBox(height: 4),
-                            Text('• Daily food logs: ${validatedData!.dailyLogs.length}', style: const TextStyle(fontSize: 11)),
-                            Text('• Saved custom foods: ${validatedData!.savedFoods.length}', style: const TextStyle(fontSize: 11)),
-                            if (validatedData!.recipes.isNotEmpty)
-                              Text('• Saved recipes: ${validatedData!.recipes.length}', style: const TextStyle(fontSize: 11)),
-                            Text('• Weight logs: ${validatedData!.weightEntries.length}', style: const TextStyle(fontSize: 11)),
+                            _BackupSummary(data: validatedData!),
                           ],
                         ),
                       ),
@@ -230,19 +331,9 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                   onPressed: validatedData == null
                       ? null
                       : () async {
-                          await BackupService.restoreData(
-                            data: validatedData!,
-                            calorieStorage: widget.calorieStorage,
-                            weightStorage: widget.weightStorage,
-                            recipeStorage: widget.recipeStorage,
-                            merge: true,
-                          );
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop();
-                          }
-                          await _loadData();
-                          widget.onDataRestored?.call();
-                          _showSnackBar('✅ Backup merged successfully!');
+                          final BackupData data = validatedData!;
+                          Navigator.of(dialogContext).pop();
+                          await _applyRestore(data);
                         },
                   child: const Text('Merge Restore'),
                 ),
@@ -408,35 +499,53 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: <Widget>[
         InsightCard(
-          title: 'Full Database Backup (JSON)',
+          title: 'Full backup',
           subtitle: '$daysLogged days of food logs · ${_weights.length} weigh-ins',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                'A complete, portable snapshot of your food logs, saved foods, recipes, weigh-ins, and targets. '
-                'Copy it somewhere safe, then paste it back with Restore.',
+                'Saves your food logs, saved foods, recipes, weigh-ins, and targets to one .json file. '
+                'Keep it in Drive or email it to yourself, and restore it here or on a new phone.',
                 style: bodyStyle,
               ),
               const SizedBox(height: 14),
               Row(
                 children: <Widget>[
                   Expanded(
-                    child: OutlinedButton.icon(
-                      key: const Key('exportJsonBackupButton'),
-                      icon: const Icon(Icons.copy_all_rounded, size: 16),
-                      label: const Text('Copy JSON'),
-                      onPressed: _exportJsonBackup,
+                    child: FilledButton.icon(
+                      key: const Key('saveBackupFileButton'),
+                      icon: const Icon(Icons.save_alt_rounded, size: 16),
+                      label: const Text('Save file'),
+                      onPressed: _saveBackupFile,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: FilledButton.icon(
-                      key: const Key('restoreFromBackupButton'),
-                      icon: const Icon(Icons.restore_page_rounded, size: 16),
-                      label: const Text('Restore'),
-                      onPressed: _showRestoreDialog,
+                    child: OutlinedButton.icon(
+                      key: const Key('restoreBackupFileButton'),
+                      icon: const Icon(Icons.file_open_outlined, size: 16),
+                      label: const Text('Restore file'),
+                      onPressed: _restoreFromFile,
                     ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: <Widget>[
+                  Text('Or use text:', style: bodyStyle),
+                  TextButton.icon(
+                    key: const Key('exportJsonBackupButton'),
+                    icon: const Icon(Icons.copy_all_rounded, size: 15),
+                    label: const Text('Copy'),
+                    onPressed: _exportJsonBackup,
+                  ),
+                  TextButton.icon(
+                    key: const Key('restoreFromBackupButton'),
+                    icon: const Icon(Icons.content_paste_rounded, size: 15),
+                    label: const Text('Paste'),
+                    onPressed: _showRestoreDialog,
                   ),
                 ],
               ),
@@ -515,6 +624,27 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// What a backup contains, shown before restoring it.
+class _BackupSummary extends StatelessWidget {
+  const _BackupSummary({required this.data});
+
+  final BackupData data;
+
+  @override
+  Widget build(BuildContext context) {
+    const TextStyle style = TextStyle(fontSize: 11);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('• Daily food logs: ${data.dailyLogs.length}', style: style),
+        Text('• Saved custom foods: ${data.savedFoods.length}', style: style),
+        if (data.recipes.isNotEmpty) Text('• Saved recipes: ${data.recipes.length}', style: style),
+        Text('• Weight logs: ${data.weightEntries.length}', style: style),
       ],
     );
   }

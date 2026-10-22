@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ez_macro_2/features/calorie_tracker/data/calorie_storage.dart';
 import 'package:ez_macro_2/features/calorie_tracker/domain/daily_log.dart';
 import 'package:ez_macro_2/features/calorie_tracker/domain/user_settings.dart';
+import 'package:ez_macro_2/features/insights/data/backup_file_service.dart';
 import 'package:ez_macro_2/features/insights/presentation/insights_and_backup_modal.dart';
 import 'package:ez_macro_2/features/recipes/data/recipe_storage.dart';
 import 'package:ez_macro_2/features/weight_tracker/data/weight_storage.dart';
@@ -35,10 +36,39 @@ DateTime _daysAgo(int n) {
   return DateTime(now.year, now.month, now.day - n);
 }
 
+/// Stands in for the system save and open dialogs.
+class _FakeBackupFiles extends BackupFileService {
+  _FakeBackupFiles({this.pickResult, this.saveResult = true});
+
+  String? pickResult;
+  bool saveResult;
+  String? savedFileName;
+  String? savedContents;
+  String? savedMimeType;
+
+  @override
+  Future<bool> saveText({
+    required String fileName,
+    required String contents,
+    required String mimeType,
+  }) async {
+    savedFileName = fileName;
+    savedContents = contents;
+    savedMimeType = mimeType;
+    return saveResult;
+  }
+
+  @override
+  Future<String?> pickText() async => pickResult;
+}
+
 Future<void> _openModal(
   WidgetTester tester, {
   required CalorieStorage calorieStorage,
   required WeightStorage weightStorage,
+  BackupFileService backupFiles = const PlatformBackupFileService(),
+  RecipeStorage? recipeStorage,
+  VoidCallback? onDataRestored,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -49,6 +79,9 @@ Future<void> _openModal(
               context,
               calorieStorage: calorieStorage,
               weightStorage: weightStorage,
+              backupFiles: backupFiles,
+              recipeStorage: recipeStorage ?? InMemoryRecipeStorage(),
+              onDataRestored: onDataRestored,
             ),
             child: const Text('Open Insights'),
           ),
@@ -253,7 +286,9 @@ void main() {
     await tester.tap(find.byKey(const Key('dataBackupTab')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Full Database Backup (JSON)'), findsOneWidget);
+    expect(find.text('Full backup'), findsOneWidget);
+    expect(find.byKey(const Key('saveBackupFileButton')), findsOneWidget);
+    expect(find.byKey(const Key('restoreBackupFileButton')), findsOneWidget);
     expect(find.byKey(const Key('exportJsonBackupButton')), findsOneWidget);
     expect(find.byKey(const Key('restoreFromBackupButton')), findsOneWidget);
     expect(find.byKey(const Key('exportNutritionCsvButton')), findsOneWidget);
@@ -270,6 +305,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Export Nutrition CSV
+    await _scrollDataBackup(tester, find.byKey(const Key('exportNutritionCsvButton')));
     await tester.tap(find.byKey(const Key('exportNutritionCsvButton')));
     await tester.pumpAndSettle();
     expect(clipboardContent, startsWith('Date,Total Calories'));
@@ -423,5 +459,126 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Insights & Data'), findsOneWidget);
+  });
+
+  testWidgets('Save to file writes a dated JSON backup', (WidgetTester tester) async {
+    final CalorieStorage calorieStorage = CalorieStorage.inMemory();
+    await calorieStorage.saveDayLog(
+      DailyLog(
+        dateString: DailyLog.formatDateKey(_daysAgo(1)),
+        entries: <FoodLogEntry>[FoodLogEntry(calories: 520, mealLabel: 'Nasi goreng')],
+      ),
+    );
+    final _FakeBackupFiles files = _FakeBackupFiles();
+
+    await _openModal(
+      tester,
+      calorieStorage: calorieStorage,
+      weightStorage: InMemoryWeightStorage(),
+      backupFiles: files,
+    );
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saveBackupFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(files.savedFileName, 'ez_macro_backup_${DailyLog.formatDateKey(DateTime.now())}.json');
+    expect(files.savedMimeType, 'application/json');
+    expect(files.savedContents, contains('"version": 1'));
+    expect(files.savedContents, contains('Nasi goreng'));
+    expect(find.textContaining('✅ Backup saved as ez_macro_backup_'), findsOneWidget);
+  });
+
+  testWidgets('Cancelling the save dialog shows no confirmation', (WidgetTester tester) async {
+    final _FakeBackupFiles files = _FakeBackupFiles(saveResult: false);
+
+    await _openModal(
+      tester,
+      calorieStorage: CalorieStorage.inMemory(),
+      weightStorage: InMemoryWeightStorage(),
+      backupFiles: files,
+    );
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saveBackupFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(files.savedFileName, isNotNull);
+    expect(find.textContaining('Backup saved'), findsNothing);
+  });
+
+  testWidgets('A saved backup file restores into an empty app', (WidgetTester tester) async {
+    final CalorieStorage source = CalorieStorage.inMemory(
+      initialSettings: const UserSettings(dailyGoal: 1900, targetProteinG: 140),
+    );
+    await source.saveDayLog(
+      DailyLog(
+        dateString: DailyLog.formatDateKey(_daysAgo(2)),
+        dailyGoal: 1900,
+        entries: <FoodLogEntry>[FoodLogEntry(calories: 640, mealLabel: 'Chicken rice bowl')],
+      ),
+    );
+    final InMemoryWeightStorage sourceWeights = InMemoryWeightStorage();
+    await sourceWeights.saveEntry(WeightEntry(id: 'w1', weight: 81.2, date: _daysAgo(2)));
+    final _FakeBackupFiles files = _FakeBackupFiles();
+
+    await _openModal(tester, calorieStorage: source, weightStorage: sourceWeights, backupFiles: files);
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saveBackupFileButton')));
+    await tester.pumpAndSettle();
+
+    // A fresh install picks the file that was just saved.
+    await tester.pumpWidget(const SizedBox());
+    final CalorieStorage target = CalorieStorage.inMemory();
+    final InMemoryWeightStorage targetWeights = InMemoryWeightStorage();
+    files.pickResult = files.savedContents;
+    bool restored = false;
+
+    await _openModal(
+      tester,
+      calorieStorage: target,
+      weightStorage: targetWeights,
+      backupFiles: files,
+      onDataRestored: () => restored = true,
+    );
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('restoreBackupFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restore this backup?'), findsOneWidget);
+    expect(find.text('• Daily food logs: 1'), findsOneWidget);
+    expect(find.text('• Weight logs: 1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('confirmFileRestoreButton')));
+    await tester.pumpAndSettle();
+
+    expect(restored, isTrue);
+    expect(find.text('✅ Backup merged successfully!'), findsOneWidget);
+    final List<DailyLog> logs = await target.loadAllLogs();
+    expect(logs.single.entries.single.mealLabel, 'Chicken rice bowl');
+    expect((await target.loadSettings()).dailyGoal, 1900);
+    expect((await targetWeights.loadEntries()).single.weight, 81.2);
+  });
+
+  testWidgets('Picking a file that is not a backup changes nothing', (WidgetTester tester) async {
+    final CalorieStorage calorieStorage = CalorieStorage.inMemory();
+    final _FakeBackupFiles files = _FakeBackupFiles(pickResult: 'Date,Total Calories\n2026-10-20,1800');
+
+    await _openModal(
+      tester,
+      calorieStorage: calorieStorage,
+      weightStorage: InMemoryWeightStorage(),
+      backupFiles: files,
+    );
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('restoreBackupFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text("That file isn't an EZ Macro backup."), findsOneWidget);
+    expect(find.text('Restore this backup?'), findsNothing);
+    expect(await calorieStorage.loadAllLogs(), isEmpty);
   });
 }
