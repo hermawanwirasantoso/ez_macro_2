@@ -12,138 +12,124 @@ import 'package:ez_macro_2/features/weight_tracker/domain/weight_goal.dart';
 import 'package:ez_macro_2/features/weight_tracker/domain/weight_unit.dart';
 import 'package:ez_macro_2/main.dart';
 
-Future<void> _scrollInsights(WidgetTester tester, Finder finder, {double delta = 50}) async {
+Future<void> _scrollTo(WidgetTester tester, String scrollViewKey, Finder finder) async {
   final Finder scrollableFinder = find.descendant(
-    of: find.byKey(const Key('weeklyInsightsScrollView')),
+    of: find.byKey(Key(scrollViewKey)),
     matching: find.byType(Scrollable),
   );
-  if (tester.any(finder)) {
-    await tester.ensureVisible(finder);
-    await tester.pumpAndSettle();
-    return;
+  if (!tester.any(finder)) {
+    await tester.scrollUntilVisible(finder, 120, scrollable: scrollableFinder.first);
   }
-  await tester.scrollUntilVisible(
-    finder,
-    delta,
-    scrollable: scrollableFinder.first,
-  );
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
 }
 
-Future<void> _scrollDataBackup(WidgetTester tester, Finder finder, {double delta = 50}) async {
-  final Finder scrollableFinder = find.descendant(
-    of: find.byKey(const Key('dataBackupScrollView')),
-    matching: find.byType(Scrollable),
+Future<void> _scrollOverview(WidgetTester tester, Finder finder) =>
+    _scrollTo(tester, 'overviewScrollView', finder);
+
+Future<void> _scrollDataBackup(WidgetTester tester, Finder finder) =>
+    _scrollTo(tester, 'dataBackupScrollView', finder);
+
+DateTime _daysAgo(int n) {
+  final DateTime now = DateTime.now();
+  return DateTime(now.year, now.month, now.day - n);
+}
+
+Future<void> _openModal(
+  WidgetTester tester, {
+  required CalorieStorage calorieStorage,
+  required WeightStorage weightStorage,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (BuildContext context) => ElevatedButton(
+            onPressed: () => InsightsAndBackupModal.show(
+              context,
+              calorieStorage: calorieStorage,
+              weightStorage: weightStorage,
+            ),
+            child: const Text('Open Insights'),
+          ),
+        ),
+      ),
+    ),
   );
-  if (tester.any(finder)) {
-    await tester.ensureVisible(finder);
-    await tester.pumpAndSettle();
-    return;
-  }
-  await tester.scrollUntilVisible(
-    finder,
-    delta,
-    scrollable: scrollableFinder.first,
-  );
-  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Open Insights'));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('InsightsAndBackupModal renders Weekly Insights with computed metrics',
+  testWidgets('Overview shows completed-day averages, weekly averages, and highlights',
       (WidgetTester tester) async {
     final CalorieStorage calorieStorage = CalorieStorage.inMemory(
       initialSettings: const UserSettings(dailyGoal: 2200, targetProteinG: 160),
     );
     final InMemoryWeightStorage weightStorage = InMemoryWeightStorage();
 
-    final DateTime today = DateTime.now();
-    for (int i = 0; i < 7; i++) {
+    for (int i = 1; i <= 7; i++) {
       await calorieStorage.saveDayLog(
         DailyLog(
-          dateString: DailyLog.formatDateKey(today.subtract(Duration(days: i))),
+          dateString: DailyLog.formatDateKey(_daysAgo(i)),
           entries: <FoodLogEntry>[
             FoodLogEntry(calories: 2000, mealLabel: 'Meal', proteinG: 170, carbsG: 200, fatG: 50),
           ],
         ),
       );
     }
-
-    await weightStorage.saveEntry(
-      WeightEntry(
-        id: 'w1',
-        weight: 75.0,
-        unit: WeightUnit.kg,
-        date: today.subtract(const Duration(days: 6)),
+    // Today is still in progress and must not pull the averages down.
+    await calorieStorage.saveDayLog(
+      DailyLog(
+        dateString: DailyLog.formatDateKey(_daysAgo(0)),
+        entries: <FoodLogEntry>[FoodLogEntry(calories: 400, mealLabel: 'Breakfast')],
       ),
     );
     await weightStorage.saveEntry(
-      WeightEntry(
-        id: 'w2',
-        weight: 74.6,
-        unit: WeightUnit.kg,
-        date: today,
-      ),
+      WeightEntry(id: 'w1', weight: 75.0, unit: WeightUnit.kg, date: _daysAgo(6)),
+    );
+    await weightStorage.saveEntry(
+      WeightEntry(id: 'w2', weight: 74.6, unit: WeightUnit.kg, date: _daysAgo(0)),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (BuildContext context) => ElevatedButton(
-              onPressed: () => InsightsAndBackupModal.show(
-                context,
-                calorieStorage: calorieStorage,
-                weightStorage: weightStorage,
-              ),
-              child: const Text('Open Insights'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // Open modal
-    await tester.tap(find.text('Open Insights'));
-    await tester.pumpAndSettle();
+    await _openModal(tester, calorieStorage: calorieStorage, weightStorage: weightStorage);
 
     expect(find.text('Insights & Data'), findsOneWidget);
-    expect(find.text('7-DAY PERFORMANCE'), findsOneWidget);
-    expect(find.byKey(const Key('daysLoggedBadgeText')), findsOneWidget);
-    expect(find.text('7/7 Days Logged'), findsOneWidget);
-    expect(find.text('2000'), findsOneWidget);
-    expect(find.text('-1400 kcal'), findsOneWidget); // 14000 - 15400
-
-    expect(find.text('Weight vs Calorie Trend'), findsOneWidget);
+    expect(find.text('7/7 days logged'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('avgCaloriesText'))).textSpan!.toPlainText(),
+      contains('2,000'),
+    );
+    expect(find.text('-1,400 kcal'), findsOneWidget); // 14,000 - 15,400
     expect(find.text('-0.18 kg'), findsOneWidget);
+    expect(find.byKey(const Key('todayExcludedNote')), findsOneWidget);
+
+    await _scrollOverview(tester, find.byKey(const Key('weekRow_7')));
+    expect(find.text('Weekly averages'), findsOneWidget);
+    expect(find.text('Last week'), findsOneWidget);
+
+    await _scrollOverview(tester, find.byKey(const Key('weightChangeText')));
     expect(find.text('-0.4 kg'), findsOneWidget);
 
-    expect(find.text('Daily Macro Averages'), findsOneWidget);
-
-    await _scrollInsights(tester, find.text('Weekly Achievements & Insights'));
-    expect(find.text('Weekly Achievements & Insights'), findsOneWidget);
+    final Finder proteinHighlight = find.textContaining('Protein target (160 g) reached on 7 of 7');
+    await _scrollOverview(tester, proteinHighlight);
+    expect(proteinHighlight, findsOneWidget);
   });
 
-  testWidgets('InsightsAndBackupModal Monthly tab shows 30-day metrics and projection',
+  testWidgets('Period selector switches to 30 days and shows the goal projection',
       (WidgetTester tester) async {
     final CalorieStorage calorieStorage = CalorieStorage.inMemory(
       initialSettings: const UserSettings(dailyGoal: 2200, targetProteinG: 150),
     );
     final InMemoryWeightStorage weightStorage = InMemoryWeightStorage(
-      initialGoal: const WeightGoal(
-        targetWeight: 75.0,
-        startingWeight: 80.0,
-        unit: WeightUnit.kg,
-      ),
+      initialGoal: const WeightGoal(targetWeight: 75.0, startingWeight: 80.0, unit: WeightUnit.kg),
     );
 
-    final DateTime today = DateTime.now();
-    for (int i = 0; i < 25; i++) {
+    for (int i = 1; i <= 25; i++) {
       await calorieStorage.saveDayLog(
         DailyLog(
-          dateString: DailyLog.formatDateKey(today.subtract(Duration(days: i))),
+          dateString: DailyLog.formatDateKey(_daysAgo(i)),
           entries: <FoodLogEntry>[
             FoodLogEntry(calories: 1900, mealLabel: 'Meal', proteinG: 160, carbsG: 180, fatG: 50),
           ],
@@ -152,51 +138,75 @@ void main() {
     }
     for (int i = 0; i < 5; i++) {
       await weightStorage.saveEntry(
-        WeightEntry(
-          id: 'w$i',
-          weight: 80.0 - (i * 0.5),
-          unit: WeightUnit.kg,
-          date: today.subtract(Duration(days: 28 - (i * 7))),
-        ),
+        WeightEntry(id: 'w$i', weight: 80.0 - (i * 0.5), unit: WeightUnit.kg, date: _daysAgo(28 - (i * 7))),
       );
     }
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (BuildContext context) => ElevatedButton(
-              onPressed: () => InsightsAndBackupModal.show(
-                context,
-                calorieStorage: calorieStorage,
-                weightStorage: weightStorage,
-              ),
-              child: const Text('Open Insights'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Open Insights'));
+    await _openModal(tester, calorieStorage: calorieStorage, weightStorage: weightStorage);
+
+    await tester.tap(find.byKey(const Key('insightsPeriod_30')));
     await tester.pumpAndSettle();
 
-    final Finder monthlyTab = find.byKey(const Key('monthlyInsightsTab'));
-    await tester.ensureVisible(monthlyTab);
-    await tester.pumpAndSettle();
-    await tester.tap(monthlyTab);
-    await tester.pumpAndSettle();
+    expect(find.text('25/30 days logged'), findsOneWidget);
+    expect(find.text('-7,500 kcal'), findsOneWidget); // 25 x (1,900 - 2,200)
 
-    expect(find.text('30-DAY PERFORMANCE'), findsOneWidget);
-    expect(find.text('25/30 Days Logged'), findsOneWidget);
-    expect(find.byKey(const Key('monthlyAvgDailyCaloriesText')), findsOneWidget);
-    expect(find.byKey(const Key('monthlyNetCalorieDeltaText')), findsOneWidget);
-    expect(find.text('-0.5 kg/week'), findsOneWidget);
-    expect(find.textContaining('On track! Goal weight'), findsOneWidget);
-    expect(find.text('Monthly Macro Averages'), findsOneWidget);
+    await _scrollOverview(tester, find.byKey(const Key('goalProjectionText')));
+    expect(find.text('-0.5 kg/wk'), findsOneWidget);
+    expect(find.textContaining('At this pace you reach your goal'), findsOneWidget);
   });
 
-  testWidgets('InsightsAndBackupModal switches to Data & Backup tab and exports data',
+  testWidgets('History tab lists logged days by week and expands a day',
+      (WidgetTester tester) async {
+    final CalorieStorage calorieStorage = CalorieStorage.inMemory();
+    final InMemoryWeightStorage weightStorage = InMemoryWeightStorage();
+
+    await calorieStorage.saveDayLog(
+      DailyLog(
+        dateString: DailyLog.formatDateKey(_daysAgo(1)),
+        entries: <FoodLogEntry>[
+          FoodLogEntry(calories: 300, mealLabel: 'Oatmeal'),
+          FoodLogEntry(calories: 600, mealLabel: 'Chicken Bowl'),
+        ],
+      ),
+    );
+    await calorieStorage.saveDayLog(
+      DailyLog(
+        dateString: DailyLog.formatDateKey(_daysAgo(10)),
+        entries: <FoodLogEntry>[FoodLogEntry(calories: 2100, mealLabel: 'Pasta')],
+      ),
+    );
+
+    await _openModal(tester, calorieStorage: calorieStorage, weightStorage: weightStorage);
+
+    await tester.tap(find.byKey(const Key('historyTab')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('historySummary')), findsOneWidget);
+    expect(find.text('1,500'), findsOneWidget); // (900 + 2,100) / 2
+
+    final Finder yesterday = find.byKey(Key('historyDay_${DailyLog.formatDateKey(_daysAgo(1))}'));
+    expect(yesterday, findsOneWidget);
+    expect(find.text('Oatmeal'), findsNothing);
+
+    await tester.tap(yesterday);
+    await tester.pumpAndSettle();
+    expect(find.text('Oatmeal'), findsOneWidget);
+    expect(find.text('Chicken Bowl'), findsOneWidget);
+  });
+
+  testWidgets('History tab shows an empty state without logs', (WidgetTester tester) async {
+    await _openModal(
+      tester,
+      calorieStorage: CalorieStorage.inMemory(),
+      weightStorage: InMemoryWeightStorage(),
+    );
+
+    await tester.tap(find.byKey(const Key('historyTab')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('historyEmptyText')), findsOneWidget);
+  });
+
+  testWidgets('InsightsAndBackupModal switches to the Data tab and exports data',
       (WidgetTester tester) async {
     String clipboardContent = '';
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -239,8 +249,8 @@ void main() {
     await tester.tap(find.text('Open Insights'));
     await tester.pumpAndSettle();
 
-    // Switch to Data & Backup tab
-    await tester.tap(find.text('Data & Backup'));
+    // Switch to the Data tab
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
     await tester.pumpAndSettle();
 
     expect(find.text('Full Database Backup (JSON)'), findsOneWidget);
@@ -253,6 +263,11 @@ void main() {
     await tester.tap(find.byKey(const Key('exportJsonBackupButton')));
     await tester.pumpAndSettle();
     expect(clipboardContent, contains('"version": 1'));
+    expect(find.text('✅ Full Backup (JSON) copied to clipboard!'), findsOneWidget);
+
+    // Let the confirmation, shown inside the sheet, time out before the next tap.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
 
     // Export Nutrition CSV
     await tester.tap(find.byKey(const Key('exportNutritionCsvButton')));
@@ -292,7 +307,7 @@ void main() {
     await tester.tap(find.text('Open Insights'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Data & Backup'));
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
     await tester.pumpAndSettle();
 
     // Tap Restore Backup
@@ -371,7 +386,7 @@ void main() {
     await tester.tap(find.text('Open Insights'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Data & Backup'));
+    await tester.tap(find.byKey(const Key('dataBackupTab')));
     await tester.pumpAndSettle();
 
     final Finder clearBtn = find.byKey(const Key('clearAllDataButton'));

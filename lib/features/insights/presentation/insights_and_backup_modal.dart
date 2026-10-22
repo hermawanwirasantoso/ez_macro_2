@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import '../../calorie_tracker/data/calorie_storage.dart';
 import '../../calorie_tracker/domain/daily_log.dart';
@@ -11,8 +10,9 @@ import '../../weight_tracker/data/weight_storage.dart';
 import '../../weight_tracker/domain/weight_entry.dart';
 import '../../weight_tracker/domain/weight_goal.dart';
 import '../domain/backup_data.dart';
-import '../domain/monthly_insights.dart';
-import '../domain/weekly_insights.dart';
+import 'widgets/insight_widgets.dart';
+import 'widgets/insights_history_tab.dart';
+import 'widgets/insights_overview_tab.dart';
 
 class InsightsAndBackupModal extends StatefulWidget {
   const InsightsAndBackupModal({
@@ -40,7 +40,7 @@ class InsightsAndBackupModal extends StatefulWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) => FractionallySizedBox(
-        heightFactor: 0.90,
+        heightFactor: 0.92,
         child: InsightsAndBackupModal(
           calorieStorage: calorieStorage,
           weightStorage: weightStorage,
@@ -60,15 +60,17 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
   late final TabController _tabController;
-  WeeklyInsights? _insights;
-  MonthlyInsights? _monthlyInsights;
+  List<DailyLog> _logs = const <DailyLog>[];
+  List<WeightEntry> _weights = const <WeightEntry>[];
+  UserSettings _settings = const UserSettings();
+  WeightGoal _goal = const WeightGoal();
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadInsights();
+    _loadData();
   }
 
   @override
@@ -77,6 +79,7 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
     super.dispose();
   }
 
+  // Shown inside the sheet; the app's own messenger sits behind it.
   void _showSnackBar(String message) {
     if (!mounted) return;
     _scaffoldMessengerKey.currentState?.showSnackBar(
@@ -87,33 +90,20 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
     );
   }
 
-  Future<void> _loadInsights() async {
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final List<DailyLog> logs = await widget.calorieStorage.loadAllLogs();
       final List<WeightEntry> weights = await widget.weightStorage.loadEntries();
       final UserSettings settings = await widget.calorieStorage.loadSettings();
-      final int streak = await widget.calorieStorage.calculateStreak();
       final WeightGoal goal = await widget.weightStorage.loadGoal();
-
-      final WeeklyInsights insights = WeeklyInsightsCalculator.compute(
-        logs: logs,
-        weightEntries: weights,
-        settings: settings,
-        streak: streak,
-      );
-
-      final MonthlyInsights monthlyInsights = MonthlyInsightsCalculator.compute(
-        logs: logs,
-        weightEntries: weights,
-        settings: settings,
-        goal: goal,
-      );
 
       if (mounted) {
         setState(() {
-          _insights = insights;
-          _monthlyInsights = monthlyInsights;
+          _logs = logs;
+          _weights = weights;
+          _settings = settings;
+          _goal = goal;
           _isLoading = false;
         });
       }
@@ -124,70 +114,32 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
     }
   }
 
-  Future<void> _exportJsonBackup() async {
-    final String jsonStr = await BackupService.exportToJsonString(
-      calorieStorage: widget.calorieStorage,
-      weightStorage: widget.weightStorage,
-      recipeStorage: widget.recipeStorage,
-    );
-
-    if (!mounted) return;
-
+  Future<void> _copyToClipboard(Future<String> Function() export, String message) async {
+    final String text = await export();
     try {
-      await Clipboard.setData(ClipboardData(text: jsonStr));
+      await Clipboard.setData(ClipboardData(text: text));
     } catch (_) {}
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Full Backup (JSON) copied to clipboard!'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    _showSnackBar(message);
   }
 
-  Future<void> _exportNutritionCsv() async {
-    final String csvStr = await BackupService.exportCaloriesCsv(
-      calorieStorage: widget.calorieStorage,
-    );
+  Future<void> _exportJsonBackup() => _copyToClipboard(
+        () => BackupService.exportToJsonString(
+          calorieStorage: widget.calorieStorage,
+          weightStorage: widget.weightStorage,
+          recipeStorage: widget.recipeStorage,
+        ),
+        '✅ Full Backup (JSON) copied to clipboard!',
+      );
 
-    if (!mounted) return;
+  Future<void> _exportNutritionCsv() => _copyToClipboard(
+        () => BackupService.exportCaloriesCsv(calorieStorage: widget.calorieStorage),
+        '✅ Nutrition CSV copied to clipboard!',
+      );
 
-    try {
-      await Clipboard.setData(ClipboardData(text: csvStr));
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Nutrition CSV copied to clipboard!'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _exportWeightCsv() async {
-    final String csvStr = await BackupService.exportWeightCsv(
-      weightStorage: widget.weightStorage,
-    );
-
-    if (!mounted) return;
-
-    try {
-      await Clipboard.setData(ClipboardData(text: csvStr));
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Weight History CSV copied to clipboard!'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
+  Future<void> _exportWeightCsv() => _copyToClipboard(
+        () => BackupService.exportWeightCsv(weightStorage: widget.weightStorage),
+        '✅ Weight History CSV copied to clipboard!',
+      );
 
   Future<void> _showRestoreDialog() async {
     final TextEditingController textController = TextEditingController();
@@ -288,13 +240,9 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
                           }
-                          await _loadInsights();
+                          await _loadData();
                           widget.onDataRestored?.call();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('✅ Backup merged successfully!')),
-                            );
-                          }
+                          _showSnackBar('✅ Backup merged successfully!');
                         },
                   child: const Text('Merge Restore'),
                 ),
@@ -337,13 +285,9 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
         weightStorage: widget.weightStorage,
         recipeStorage: widget.recipeStorage,
       );
-      await _loadInsights();
+      await _loadData();
       widget.onDataRestored?.call();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('🗑️ All data cleared and reset.')),
-        );
-      }
+      _showSnackBar('🗑️ All data cleared and reset.');
     }
   }
 
@@ -363,34 +307,34 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
           child: SafeArea(
             child: Column(
               children: <Widget>[
-                const SizedBox(height: 12),
-                // Drag handle
+                const SizedBox(height: 10),
                 Center(
                   child: Container(
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black26,
+                      color: AppColors.textSecondary(isDark).withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // Header Title Row
+                const SizedBox(height: 10),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
                   child: Row(
                     children: <Widget>[
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: <Color>[AppColors.primary, AppColors.accent],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: <Color>[AppColors.primaryLight, AppColors.accent],
                           ),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.auto_graph_rounded, color: Colors.white, size: 20),
+                        child: const Icon(Icons.insights_rounded, color: Colors.white, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -400,68 +344,49 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                             Text(
                               'Insights & Data',
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 19,
                                 fontWeight: FontWeight.w800,
-                                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                letterSpacing: -0.3,
+                                letterSpacing: -0.5,
+                                color: AppColors.textPrimary(isDark),
                               ),
                             ),
                             Text(
-                              'Weekly & monthly reviews, progress analytics, and backups',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                              ),
+                              'Trends, history, and backups',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary(isDark)),
                             ),
                           ],
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Close',
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // Tab Bar
+                const SizedBox(height: 4),
                 TabBar(
                   controller: _tabController,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  indicatorColor: AppColors.primary,
-                  indicatorWeight: 3,
-                  labelColor: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                  unselectedLabelColor: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                   tabs: const <Widget>[
-                    Tab(
-                      key: Key('weeklyInsightsTab'),
-                      icon: Icon(Icons.insights_rounded, size: 20),
-                      text: 'Weekly',
-                    ),
-                    Tab(
-                      key: Key('monthlyInsightsTab'),
-                      icon: Icon(Icons.calendar_view_month_rounded, size: 20),
-                      text: 'Monthly',
-                    ),
-                    Tab(
-                      key: Key('dataBackupTab'),
-                      icon: Icon(Icons.backup_table_rounded, size: 20),
-                      text: 'Data & Backup',
-                    ),
+                    Tab(key: Key('overviewTab'), text: 'Overview'),
+                    Tab(key: Key('historyTab'), text: 'History'),
+                    Tab(key: Key('dataBackupTab'), text: 'Data'),
                   ],
                 ),
-
-                // Tab Views
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : TabBarView(
                           controller: _tabController,
                           children: <Widget>[
-                            _buildWeeklyInsightsTab(isDark),
-                            _buildMonthlyInsightsTab(isDark),
+                            InsightsOverviewTab(
+                              logs: _logs,
+                              weightEntries: _weights,
+                              settings: _settings,
+                              goal: _goal,
+                            ),
+                            InsightsHistoryTab(logs: _logs),
                             _buildDataBackupTab(isDark),
                           ],
                         ),
@@ -474,707 +399,33 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
     );
   }
 
-  Widget _buildWeeklyInsightsTab(bool isDark) {
-    final WeeklyInsights insights = _insights ??
-        const WeeklyInsights(
-          daysLogged: 0,
-          totalDays: 7,
-          totalCaloriesConsumed: 0,
-          averageDailyCalories: 0,
-          targetDailyCalories: 2200,
-          netCalorieDelta: 0,
-          averageProteinG: 0,
-          averageCarbsG: 0,
-          averageFatG: 0,
-          proteinAdherencePercent: 0,
-          startWeightKg: null,
-          currentWeightKg: null,
-          actualWeightDeltaKg: null,
-          estimatedWeightDeltaKg: 0.0,
-          streak: 0,
-          insightBadges: <InsightBadge>[],
-        );
-
-    return ListView(
-      key: const Key('weeklyInsightsScrollView'),
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        // Hero 7-Day Performance Banner
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isDark
-                  ? <Color>[
-                      AppColors.primary.withValues(alpha: 0.25),
-                      AppColors.darkCard,
-                    ]
-                  : <Color>[
-                      AppColors.primary.withValues(alpha: 0.12),
-                      AppColors.lightCard,
-                    ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: AppColors.primary.withValues(alpha: isDark ? 0.4 : 0.3),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  const Text(
-                    '7-DAY PERFORMANCE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.0,
-                      color: AppColors.primaryLight,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${insights.daysLogged}/7 Days Logged',
-                      key: const Key('daysLoggedBadgeText'),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryLight,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: <Widget>[
-                          Text(
-                            '${insights.averageDailyCalories}',
-                            key: const Key('avgDailyCaloriesText'),
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'kcal/day avg',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        'Target: ${insights.targetDailyCalories} kcal',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Net Deficit / Surplus pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: insights.netCalorieDelta <= 0
-                          ? AppColors.carbs.withValues(alpha: 0.15)
-                          : AppColors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: insights.netCalorieDelta <= 0
-                            ? AppColors.carbs.withValues(alpha: 0.4)
-                            : AppColors.primary.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Column(
-                      children: <Widget>[
-                        Text(
-                          insights.netCalorieDelta == 0
-                              ? '0 kcal'
-                              : (insights.netCalorieDelta > 0
-                                  ? '+${insights.netCalorieDelta} kcal'
-                                  : '${insights.netCalorieDelta} kcal'),
-                          key: const Key('netCalorieDeltaText'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: insights.netCalorieDelta <= 0 ? AppColors.carbs : AppColors.primaryLight,
-                          ),
-                        ),
-                        Text(
-                          insights.netCalorieDelta <= 0 ? 'Net Deficit' : 'Net Surplus',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Weight Correlation Card
-        _buildSectionCard(
-          isDark: isDark,
-          title: 'Weight vs Calorie Trend',
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text('Estimated Fat Change', style: TextStyle(fontSize: 11)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${insights.estimatedWeightDeltaKg > 0 ? "+" : ""}${insights.estimatedWeightDeltaKg} kg',
-                      key: const Key('estimatedWeightDeltaText'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: insights.estimatedWeightDeltaKg <= 0 ? AppColors.carbs : AppColors.primaryLight,
-                      ),
-                    ),
-                    const Text('from net calorie math', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                  ],
-                ),
-              ),
-              Container(width: 1, height: 40, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text('Actual Scale Delta', style: TextStyle(fontSize: 11)),
-                    const SizedBox(height: 2),
-                    Text(
-                      insights.actualWeightDeltaKg != null
-                          ? '${insights.actualWeightDeltaKg! > 0 ? "+" : ""}${insights.actualWeightDeltaKg} kg'
-                          : 'No weigh-in',
-                      key: const Key('actualScaleDeltaText'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: (insights.actualWeightDeltaKg ?? 0) <= 0 ? AppColors.carbs : AppColors.primaryLight,
-                      ),
-                    ),
-                    const Text('7-day scale trend', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Macro Daily Averages Card
-        _buildSectionCard(
-          isDark: isDark,
-          title: 'Daily Macro Averages',
-          child: Column(
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: <Widget>[
-                  _buildMacroStat('Protein', '${insights.averageProteinG}g', AppColors.protein),
-                  _buildMacroStat('Carbs', '${insights.averageCarbsG}g', AppColors.carbs),
-                  _buildMacroStat('Fat', '${insights.averageFatG}g', AppColors.fat),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    const Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColors.protein),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Protein adherence: ${insights.proteinAdherencePercent}% of logged days',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Smart Badges
-        if (insights.insightBadges.isNotEmpty) ...<Widget>[
-          _buildSectionCard(
-            isDark: isDark,
-            title: 'Weekly Achievements & Insights',
-            child: _buildBadgeCards(isDark, insights.insightBadges),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildMonthlyInsightsTab(bool isDark) {
-    final MonthlyInsights insights = _monthlyInsights ??
-        const MonthlyInsights(
-          daysLogged: 0,
-          totalDays: 30,
-          totalCaloriesConsumed: 0,
-          averageDailyCalories: 0,
-          targetDailyCalories: 2200,
-          netCalorieDelta: 0,
-          averageProteinG: 0,
-          averageCarbsG: 0,
-          averageFatG: 0,
-          proteinAdherencePercent: 0,
-          bestStreakInWindow: 0,
-          startWeightKg: null,
-          currentWeightKg: null,
-          actualWeightDeltaKg: null,
-          estimatedWeightDeltaKg: 0.0,
-          weightTrendKgPerWeek: null,
-          trendSampleDays: 0,
-          projectedDaysToGoal: null,
-          projectedGoalDate: null,
-          remainingToGoalKg: null,
-          insightBadges: <InsightBadge>[],
-        );
-
-    final String? trendText = insights.weightTrendKgPerWeekRounded == null
-        ? null
-        : '${insights.weightTrendKgPerWeekRounded! > 0 ? "+" : ""}${insights.weightTrendKgPerWeekRounded} kg/week';
-
-    return ListView(
-      key: const Key('monthlyInsightsScrollView'),
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        // Hero 30-Day Performance Banner
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isDark
-                  ? <Color>[
-                      AppColors.accent.withValues(alpha: 0.25),
-                      AppColors.darkCard,
-                    ]
-                  : <Color>[
-                      AppColors.accent.withValues(alpha: 0.12),
-                      AppColors.lightCard,
-                    ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: AppColors.accent.withValues(alpha: isDark ? 0.4 : 0.3),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  const Text(
-                    '30-DAY PERFORMANCE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.0,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${insights.daysLogged}/30 Days Logged',
-                      key: const Key('monthlyDaysLoggedBadgeText'),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: <Widget>[
-                          Text(
-                            '${insights.averageDailyCalories}',
-                            key: const Key('monthlyAvgDailyCaloriesText'),
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'kcal/day avg',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        'Target: ${insights.targetDailyCalories} kcal • Best streak: ${insights.bestStreakInWindow}d',
-                        key: const Key('monthlyBestStreakText'),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Net Deficit / Surplus pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: insights.netCalorieDelta <= 0
-                          ? AppColors.carbs.withValues(alpha: 0.15)
-                          : AppColors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: insights.netCalorieDelta <= 0
-                            ? AppColors.carbs.withValues(alpha: 0.4)
-                            : AppColors.primary.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Column(
-                      children: <Widget>[
-                        Text(
-                          insights.netCalorieDelta == 0
-                              ? '0 kcal'
-                              : (insights.netCalorieDelta > 0
-                                  ? '+${insights.netCalorieDelta} kcal'
-                                  : '${insights.netCalorieDelta} kcal'),
-                          key: const Key('monthlyNetCalorieDeltaText'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: insights.netCalorieDelta <= 0 ? AppColors.carbs : AppColors.primaryLight,
-                          ),
-                        ),
-                        Text(
-                          insights.netCalorieDelta <= 0 ? 'Net Deficit' : 'Net Surplus',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Weight Trend & Projection Card
-        _buildSectionCard(
-          isDark: isDark,
-          title: 'Weight Trend & Goal Projection',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text('30-Day Trend', style: TextStyle(fontSize: 11)),
-                        const SizedBox(height: 2),
-                        Text(
-                          trendText ?? 'Not enough weigh-ins',
-                          key: const Key('monthlyTrendPerWeekText'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: trendText == null
-                                ? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)
-                                : ((insights.weightTrendKgPerWeek ?? 0) <= 0
-                                    ? AppColors.carbs
-                                    : AppColors.primaryLight),
-                          ),
-                        ),
-                        Text(
-                          insights.trendSampleDays > 0
-                              ? 'from ${insights.trendSampleDays} weigh-in days'
-                              : 'log weight for 7+ days to unlock',
-                          style: const TextStyle(fontSize: 10, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(width: 1, height: 40, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text('Actual 30-Day Change', style: TextStyle(fontSize: 11)),
-                        const SizedBox(height: 2),
-                        Text(
-                          insights.actualWeightDeltaKg != null
-                              ? '${insights.actualWeightDeltaKg! > 0 ? "+" : ""}${insights.actualWeightDeltaKg} kg'
-                              : 'No weigh-in',
-                          key: const Key('monthlyActualDeltaText'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: (insights.actualWeightDeltaKg ?? 0) <= 0 ? AppColors.carbs : AppColors.primaryLight,
-                          ),
-                        ),
-                        Text(
-                          'estimated ${insights.estimatedWeightDeltaKg > 0 ? "+" : ""}${insights.estimatedWeightDeltaKg} kg from calories',
-                          key: const Key('monthlyEstimatedDeltaText'),
-                          style: const TextStyle(fontSize: 10, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                key: const Key('monthlyGoalProjectionCard'),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: insights.hasGoalProjection
-                      ? AppColors.success.withValues(alpha: isDark ? 0.12 : 0.08)
-                      : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: insights.hasGoalProjection
-                        ? AppColors.success.withValues(alpha: 0.35)
-                        : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                  ),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Icon(
-                      insights.hasGoalProjection
-                          ? Icons.flag_circle_rounded
-                          : Icons.hourglass_empty_rounded,
-                      size: 18,
-                      color: insights.hasGoalProjection
-                          ? AppColors.success
-                          : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _goalProjectionText(insights),
-                        key: const Key('monthlyProjectedGoalText'),
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: insights.hasGoalProjection
-                              ? AppColors.success
-                              : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Macro Daily Averages Card
-        _buildSectionCard(
-          isDark: isDark,
-          title: 'Monthly Macro Averages',
-          child: Column(
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: <Widget>[
-                  _buildMacroStat('Protein', '${insights.averageProteinG}g', AppColors.protein),
-                  _buildMacroStat('Carbs', '${insights.averageCarbsG}g', AppColors.carbs),
-                  _buildMacroStat('Fat', '${insights.averageFatG}g', AppColors.fat),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    const Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColors.protein),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Protein adherence: ${insights.proteinAdherencePercent}% of logged days • Logging consistency: ${insights.loggingAdherencePercent}%',
-                        key: const Key('monthlyProteinAdherenceText'),
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Monthly Badges
-        if (insights.insightBadges.isNotEmpty) ...<Widget>[
-          _buildSectionCard(
-            isDark: isDark,
-            title: 'Monthly Achievements & Insights',
-            child: _buildBadgeCards(isDark, insights.insightBadges),
-          ),
-        ],
-      ],
-    );
-  }
-
-  String _goalProjectionText(MonthlyInsights insights) {
-    if (insights.hasGoalProjection && insights.projectedGoalDate != null) {
-      final String dateStr =
-          DateFormat('MMM d, yyyy').format(insights.projectedGoalDate!);
-      return 'On track! Goal weight in ~${insights.projectedDaysToGoal} days ($dateStr) at your current pace.';
-    }
-    if (insights.remainingToGoalKg != null) {
-      if (insights.weightTrendKgPerWeek == null) {
-        return '${insights.remainingToGoalKg} kg to goal. Weigh in consistently for a week to unlock a projection.';
-      }
-      return '${insights.remainingToGoalKg} kg to goal. Your current trend is not moving toward it yet.';
-    }
-    return 'Set a goal weight in the Weight tab to unlock goal projections.';
-  }
-
-  Widget _buildBadgeCards(bool isDark, List<InsightBadge> badges) {
-    return Column(
-      children: badges.map((InsightBadge badge) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            ),
-          ),
-          child: Row(
-            children: <Widget>[
-              Text(badge.emoji, style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      badge.title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                      ),
-                    ),
-                    Text(
-                      badge.description,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildDataBackupTab(bool isDark) {
+    final int daysLogged = _logs.where((DailyLog log) => log.entries.isNotEmpty).length;
+    final TextStyle bodyStyle = TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary(isDark));
+
     return ListView(
       key: const Key('dataBackupScrollView'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: <Widget>[
-        // JSON Full Backup Card
-        _buildSectionCard(
-          isDark: isDark,
+        InsightCard(
           title: 'Full Database Backup (JSON)',
+          subtitle: '$daysLogged days of food logs · ${_weights.length} weigh-ins',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text(
-                'Exports a complete, portable snapshot containing all food logs, custom saved foods, weigh-ins, and target settings.',
-                style: TextStyle(fontSize: 12),
+              Text(
+                'A complete, portable snapshot of your food logs, saved foods, recipes, weigh-ins, and targets. '
+                'Copy it somewhere safe, then paste it back with Restore.',
+                style: bodyStyle,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Row(
                 children: <Widget>[
                   Expanded(
                     child: OutlinedButton.icon(
                       key: const Key('exportJsonBackupButton'),
                       icon: const Icon(Icons.copy_all_rounded, size: 16),
-                      label: const Text('Copy JSON Backup'),
+                      label: const Text('Copy JSON'),
                       onPressed: _exportJsonBackup,
                     ),
                   ),
@@ -1183,7 +434,7 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                     child: FilledButton.icon(
                       key: const Key('restoreFromBackupButton'),
                       icon: const Icon(Icons.restore_page_rounded, size: 16),
-                      label: const Text('Restore Backup'),
+                      label: const Text('Restore'),
                       onPressed: _showRestoreDialog,
                     ),
                   ),
@@ -1193,26 +444,23 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
           ),
         ),
         const SizedBox(height: 14),
-
-        // CSV Spreadsheets Card
-        _buildSectionCard(
-          isDark: isDark,
+        InsightCard(
           title: 'Spreadsheet Export (CSV)',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text(
-                'Export clean spreadsheet files for Microsoft Excel, Google Sheets, or sharing with a coach.',
-                style: TextStyle(fontSize: 12),
+              Text(
+                'Daily totals and weigh-ins for Excel, Google Sheets, or sharing with a coach.',
+                style: bodyStyle,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Row(
                 children: <Widget>[
                   Expanded(
                     child: OutlinedButton.icon(
                       key: const Key('exportNutritionCsvButton'),
                       icon: const Icon(Icons.table_chart_rounded, size: 16),
-                      label: const Text('Nutrition CSV'),
+                      label: const Text('Nutrition'),
                       onPressed: _exportNutritionCsv,
                     ),
                   ),
@@ -1221,7 +469,7 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                     child: OutlinedButton.icon(
                       key: const Key('exportWeightCsvButton'),
                       icon: const Icon(Icons.monitor_weight_outlined, size: 16),
-                      label: const Text('Weight CSV'),
+                      label: const Text('Weight'),
                       onPressed: _exportWeightCsv,
                     ),
                   ),
@@ -1230,17 +478,13 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
             ],
           ),
         ),
-        const SizedBox(height: 20),
-
-        // Clear All Data
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppColors.error.withValues(alpha: isDark ? 0.1 : 0.05),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: AppColors.error.withValues(alpha: 0.3),
-            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1251,18 +495,14 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
                   SizedBox(width: 8),
                   Text(
                     'Danger Zone',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.error,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.error),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Permanently reset all daily logs, saved foods, and weight records.',
-                style: TextStyle(fontSize: 11),
+                style: bodyStyle,
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -1274,60 +514,6 @@ class _InsightsAndBackupModalState extends State<InsightsAndBackupModal>
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionCard({
-    required bool isDark,
-    required String title,
-    required Widget child,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
-              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMacroStat(String label, String value, Color color) {
-    return Column(
-      children: <Widget>[
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-        Text(
-          value,
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color),
         ),
       ],
     );
